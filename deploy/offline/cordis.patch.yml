@@ -1,0 +1,79 @@
+- id: agent-default-model
+  config:
+    provider: local-private
+    model: !!js process.env.DSH_MODEL_ID
+- id: llm-pi-ai
+  config:
+    providers:
+      local-private:
+        displayName: Local model
+        api: openai-completions
+        baseURL: !!js process.env.DSH_MODEL_BASE_URL
+        apiKeyEnv: DSH_LOCAL_MODEL_KEY
+        models:
+          - id: !!js process.env.DSH_MODEL_ID
+            contextWindow: !!js Number(process.env.DSH_CONTEXT_WINDOW)
+            maxTokens: !!js Number(process.env.DSH_MAX_TOKENS)
+            input: [text]
+            reasoningEfforts: false
+        compat:
+          supportsStore: false
+          supportsReasoningEffort: false
+          maxTokensField: max_tokens
+- id: sandbox-policy
+  config:
+    mode: workspace-write
+    workspaceRoot: !!js process.env.DSH_WORKSPACE || '/workspace'
+- id: approval
+  config:
+    policy: never
+- id: permission
+  config:
+    defaultPreset: local-workspace
+    presets:
+      local-workspace:
+        sandbox: workspace-write
+        approval: never
+        name: Local workspace
+        description: Write inside the mounted workspace without network escalation.
+- id: system-prompt
+  config:
+    personaSuffix: |
+      작업 설명과 결과는 한국어로 작성한다. 필요한 파일을 읽고 최소 수정 후 관련 테스트를 실행한다.
+      통과한 검사는 관련 변경이나 새로운 실패 원인 없이 반복하지 않는다.
+      모델 추론과 로그는 로컬 환경에 유지한다. 인터넷 도구가 없으면 네트워크 우회를 시도하지 않는다.
+- id: plugin-manager
+  disabled: true
+- id: tool-plugin-manager
+  disabled: true
+- id: session-log-deepseek
+  disabled: true
+- id: plugin-package-inventory-deepseek
+  disabled: true
+- id: session-telemetry-otel
+  disabled: true
+- id: deepseek-account
+  disabled: true
+- id: llm-deepseek
+  disabled: true
+- id: llm-deepseek-account
+  disabled: true
+- id: web-search-deepseek
+  disabled: true
+- id: web-fetch-http
+  disabled: true
+- id: tool-web
+  disabled: false
+  config:
+    fetch: true
+    searchTimeoutMs: 370000
+    fetchTimeoutMs: 370000
+- id: web
+  config:
+    searchProvider: public-collector
+    fetchProvider: public-collector
+- insert:
+    - id: public-web-provider
+      name: './web-provider.mjs'
+- id: session-title-llm
+  disabled: true

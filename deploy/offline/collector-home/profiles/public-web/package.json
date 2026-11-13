@@ -1,0 +1,6 @@
+{
+  "name": "dsh-public-web-profile",
+  "private": true,
+  "type": "module",
+  "dsh": { "profile": { "bundles": [] } }
+}

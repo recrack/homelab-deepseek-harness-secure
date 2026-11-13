@@ -1,0 +1,94 @@
+- insert:
+    - id: subagent-hermes
+      name: /opt/dsh/packages/subagent/subagent-acp/lib/index.js
+      config:
+        providerName: hermes
+        command: /usr/bin/python3
+        args: [/opt/dsh/deploy/offline/hermes-client.py]
+        permission: allow
+        disposeEofGraceMs: 10000
+        env: {}
+- insert:
+    - id: preset-hermes-qwen
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: hermes-qwen
+        name: Hermes + Qwen
+        description: Delegate code changes to the isolated Hermes agent using the local model.
+        order: 0
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |
+                Coordinate coding work through Hermes. Use the local model only for coordination.
+                Send code changes and test execution to subagent_hermes with a self-contained task and the current project directory.
+                Do not write files, run shell commands, install tools, or change configuration yourself. If Hermes fails, report the failure without doing the delegated work locally.
+                Read files only to clarify the request. Include relevant user constraints because Hermes does not receive this conversation.
+                Never send code, conversations, logs, credentials, or private files to web tools.
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+            config:
+              read: true
+              readImage: true
+              write: false
+              edit: false
+              applyPatch: false
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          - id: tool-subagent-control
+            name: '@deepseek-ai/dsh-tool-subagent-control'
+          - id: tool-subagent-hermes
+            name: '@deepseek-ai/dsh-tool-subagent'
+            config:
+              provider: hermes
+              toolName: subagent_hermes
+              maxDepth: provider-managed
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: true
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: true
+              searchTimeoutMs: 370000
+              fetchTimeoutMs: 370000
+          - id: dsh-browser
+            name: /opt/dsh-deps/dsh-browser/lib/index.js
+            config:
+              allowedOrigins: !!js JSON.parse(process.env.DSH_BROWSER_ALLOWED_ORIGINS || '[]')
+              idleTimeoutMs: 900000
+          - id: hermes-preset-guard
+            name: './preset-guard.mjs'
+            config:
+              allowedTools:
+                - read
+                - read_image
+                - glob
+                - grep
+                - working_directory
+                - subagent_hermes
+                - send_message
+                - wait_agent
+                - list_agents
+                - interrupt_agent
+                - ask_user_question
+                - todo_write
+                - web_search
+                - web_fetch
+                - browser_session_start
+                - browser_observe
+                - browser_act
+                - browser_evidence
+                - browser_session_stop

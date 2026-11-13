@@ -199,6 +199,7 @@
 | Summary | 概述 | | | 事故复盘标题用语 |
 | system prompt | 系统提示词 | | | |
 | taxonomy | 分类体系 | | | |
+| telemetry | 遥测 | 遥测（telemetry） | | 应用自动发送的诊断或使用数据；与会话日志区分 |
 | token usage | token 用量 | | | |
 | tool | 工具 | | | |
 | tool call | 工具调用 | | | |

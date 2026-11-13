@@ -1,0 +1,39 @@
+- id: webserver
+  config:
+    host: !!js process.env.DSH_WEB_HOST
+    port: !!js Number(process.env.DSH_WEB_PORT)
+    compression: gzip
+    compressionLevel: 1
+    compressionThresholdBytes: 1024
+- id: web-runtime
+  config:
+    openBrowser: false
+    printUrl: true
+    publicUrl: !!js process.env.DSH_PUBLIC_URL
+    surfaceContext: true
+- id: tool-web
+  disabled: true
+- id: preset-cordis
+  disabled: false
+- id: preset-ptc
+  disabled: false
+- id: desktop-product-telemetry
+  disabled: true
+- id: product-analytics
+  disabled: true
+- id: account-controller
+  disabled: true
+- id: ui-settings-account
+  disabled: true
+- id: ui-plugin-manager
+  disabled: true
+- id: ui-sidebar-browser
+  disabled: true
+- id: open-in-app
+  disabled: true
+- id: ui-open-in-app
+  disabled: true
+- insert:
+    - id: local-browser-policy
+      name: './browser-policy.mjs'
+      inject: [webServer]
