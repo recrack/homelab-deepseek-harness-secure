@@ -49,9 +49,9 @@ jobs:
         run: uv run --python 3.10 --group test --project python/sdk pytest
 
   # The reusable builder owns each published executable, wheel, clean-install,
-  # keyless black-box, and trusted real-API path. Linux and Windows x64 block
-  # pull requests; Linux ARM64 and both macOS architectures run in
-  # ci-master.yml.
+  # and keyless black-box path. Linux and Windows x64 block pull requests;
+  # Linux ARM64 and both macOS architectures run in ci-master.yml.
+  # No live provider tests run in GitHub Actions.
   python-runtime:
     if: github.event_name == 'pull_request'
     needs: python-sdk
@@ -60,8 +60,6 @@ jobs:
     with:
       targets: node24-linux-x64,node24-win-x64
       ci: true
-    secrets:
-      DEEPSEEK_API_KEY_EXTERNAL: ${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}
 
   # Stable required check for the Python lanes, with the same semantics as
   # ci.yml's "all checks passed": every blocking job in THIS workflow is

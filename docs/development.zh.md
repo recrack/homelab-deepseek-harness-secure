@@ -138,7 +138,7 @@ DEEPSEEK_API_KEY=sk-...
 DEEPSEEK_BASE_URL=https://... # optional
 ```
 
-`DEEPSEEK_BASE_URL` 可选，默认为公开 API。e2e 与 Web 的 Vitest 配置，以及 `DSH_SNAPSHOT=record` 时的快照配置，会自行加载根目录 `.env`；而从仓库根目录启动的 `pnpm dsh` 和 `pnpm run demo:ptc` 会把它当作项目 `.env` 读取，项目 `.env` 不能设置 `DEEPSEEK_BASE_URL`，因此这些启动需要导出该变量，或把它写入 `$DSH_HOME/.env`。请勿提交真实凭证。未设置 `DEEPSEEK_API_KEY` 时，真实 API 的 e2e 套件会自动跳过。
+`DEEPSEEK_BASE_URL` 可选，默认为公开 API。e2e 与 Web 的 Vitest 配置，以及 `DSH_SNAPSHOT=record` 时的快照配置，会自行加载根目录 `.env`；而从仓库根目录启动的 `pnpm dsh` 和 `pnpm run demo:ptc` 会把它当作项目 `.env` 读取，项目 `.env` 不能设置 `DEEPSEEK_BASE_URL`，因此这些启动需要导出该变量，或把它写入 `$DSH_HOME/.env`。请勿提交真实凭证。真实 API e2e 仅供本地显式运行；GitHub Actions 不接收提供方密钥，也不运行这类测试。本地 live-provider 检查只能使用合成输入。
 
 ### Git 集成
 
@@ -164,7 +164,7 @@ pi-ai 检查会在内存中重新生成预期元数据。数据过期时，检�
 
 ### CI 门禁
 
-keyless [CI 工作流](../.github/workflows/ci.yml) 将独立门禁分组到若干宽粒度 lane，并在受支持的 Node 版本上运行一组较小的兼容性检查。产物消费方在各自 lane 内等待一次 build。覆盖率分区复用按平台和运行器池隔离的文件耗时，在配置的 worker 上限内均衡工作量。原生 Windows lane 运行在独立的 [CI Windows 工作流](../.github/workflows/ci-windows.yml)中，Python 检查运行在独立的 [CI Python 工作流](../.github/workflows/ci-python.yml)中，两者都可单独重新运行。必需 benchmark 在标准 GitHub 托管 Linux 上独立运行；[benchmark 运行器说明](../benchmarks/AGENTS.md)拥有路由及 job 超时。单独的真实 API 工作流按其配置的 worker 上限运行 `pnpm run test:e2e`。当前门禁和 job 清单以 [scripts/run-gates.ts](../scripts/run-gates.ts) 和工作流文件为准。
+keyless [CI 工作流](../.github/workflows/ci.yml) 将独立门禁分组到若干宽粒度 lane，并在受支持的 Node 版本上运行一组较小的兼容性检查。产物消费方在各自 lane 内等待一次 build。覆盖率分区复用按平台和运行器池隔离的文件耗时，在配置的 worker 上限内均衡工作量。原生 Windows lane 运行在独立的 [CI Windows 工作流](../.github/workflows/ci-windows.yml)中，Python 检查运行在独立的 [CI Python 工作流](../.github/workflows/ci-python.yml)中，两者都可单独重新运行。必需 benchmark 在标准 GitHub 托管 Linux 上独立运行；[benchmark 运行器说明](../benchmarks/AGENTS.md)拥有路由及 job 超时。GitHub Actions 不运行真实提供方 API 测试，也不接收提供方凭证。详见[测试策略](testing.zh.md#real-provider-e2e-stays-local)、[scripts/run-gates.ts](../scripts/run-gates.ts) 和工作流文件。
 
 不带凭据的 dsh 依赖布局检查与 dsh/vendor 打包演练仅在 `DSH_CI_FAILOVER_LINUX=selfhosted`，且事件为受信任的 master 推送或同仓库、非 fork、非 Dependabot 拉取请求时使用现有 Linux 自托管池。其余情况（包括手动触发）均使用 `ubuntu-24.94`；手动发布仍使用托管运行器。持久化存储隔离与回退限制见[发布演练运行器说明](../.agents/notes/implemented/process/2026-07-26-ci-failover-runbook.zh.md)。
 
