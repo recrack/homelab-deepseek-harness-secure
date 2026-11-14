@@ -121,12 +121,12 @@ async function watchInputOverlap(composer: Locator): Promise<void> {
 
 it('accepts recorded hosted open samples and rejects slower endpoints', () => {
   for (const value of [681.276514, 541.051233]) {
-    expect(() => expectEndpointWithinBudget(value, ciTimeBudget(REFERENCE.open))).toThrow()
+    expect(() => expectEndpointWithinBudget(value, ciTimeBudget(REFERENCE.open, 'unknown CPU'))).toThrow()
     expectEndpointWithinBudget(value, OPEN_BUDGET_MS)
   }
   const repeatedMedian = median([875.306861, 1083.683529, 814.700998])
   expect(repeatedMedian).toBe(875.306861)
-  expect(() => expectEndpointWithinBudget(repeatedMedian, ciTimeBudget(REFERENCE.open))).toThrow()
+  expect(() => expectEndpointWithinBudget(repeatedMedian, ciTimeBudget(REFERENCE.open, 'unknown CPU'))).toThrow()
   expect(() => expectEndpointWithinBudget(repeatedMedian, 875)).toThrow()
   expectEndpointWithinBudget(repeatedMedian, OPEN_BUDGET_MS)
   expect(OPEN_BUDGET_MS).toBe(1125)
@@ -142,7 +142,7 @@ it('accepts recorded hosted paging and Trajectory medians and rejects slower end
   ]
   for (const { samples, reference, budget, expectedBudget } of endpoints) {
     const value = median(samples)
-    expect(() => expectEndpointWithinBudget(value, ciTimeBudget(reference))).toThrow()
+    expect(() => expectEndpointWithinBudget(value, ciTimeBudget(reference, 'unknown CPU'))).toThrow()
     expectEndpointWithinBudget(value, budget)
     expect(budget).toBe(expectedBudget)
     expect(() => expectEndpointWithinBudget(budget + 1, budget)).toThrow()

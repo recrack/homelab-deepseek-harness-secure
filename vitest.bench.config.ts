@@ -7,8 +7,8 @@ import { standardDecoratorPlugin, vitestExecArgv } from './vitest.shared.ts'
  * `benchmarks/.dsh-build/`; browser cases drive built Client artifacts through
  * the shared shipped-composition Web scaffold.
  * Two files run at a time so the four-vCPU CI runner keeps both cores busy.
- * Budgets keep their reviewed CI scale and headroom; a pairing that inflates an
- * endpoint surfaces as a failing budget and is never loosened to accept it.
+ * Budgets use the reviewed runner scale and headroom; a pairing that inflates
+ * an endpoint surfaces as a failing budget and is never loosened to accept it.
  */
 export default defineConfig({
   plugins: [tsconfigPaths({ projects: ['./tsconfig.base.json'] }), standardDecoratorPlugin()],
@@ -20,6 +20,7 @@ export default defineConfig({
     include: [
       'benchmarks/**/*.bench.ts',
       'benchmarks/**/*.bench.client.ts',
+      'benchmarks/support/**/*.spec.ts',
     ],
     fileParallelism: true,
     maxWorkers: 2,

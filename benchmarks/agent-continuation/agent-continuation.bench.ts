@@ -155,7 +155,7 @@ describe('standard hosted request-history calibration', () => {
     const recordedMedian = median(recorded)
 
     expect(recordedMedian).toBe(183.355397)
-    expect(recordedMedian).toBeGreaterThan(ciTimeBudget(70))
+    expect(recordedMedian).toBeGreaterThan(ciTimeBudget(70, 'unknown CPU'))
     assertRequestHistoryBudget(recordedMedian)
     assertRequestHistoryBudget(Math.max(...recorded))
     expect(REQUEST_HISTORY_BUDGET_MS).toBe(297)

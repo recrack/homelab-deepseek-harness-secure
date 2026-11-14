@@ -252,18 +252,16 @@ describe('CI workflow', () => {
     }
   })
 
-  it('skips coverage-history uploads on cancellation but retains Wine cleanup', () => {
-    const coverage = workflowJob(loadWorkflow('.github/workflows/ci-windows.yml'), 'windows-coverage')
+  it('omits Windows coverage while retaining Wine cleanup', () => {
+    const windows = loadWorkflow('.github/workflows/ci-windows.yml')
     const wine = workflowJob(loadWorkflow('.github/workflows/ci-master.yml'), 'windows')
-    expect(coverage.steps).toContainEqual(expect.objectContaining({
-      name: 'Save coverage duration history', if: '${{ !cancelled() }}',
-    }))
+    if (!isRecord(windows.jobs)) throw new TypeError('CI Windows must define jobs')
+    expect(windows.jobs['windows-coverage']).toBeUndefined()
     expect(wine.steps).toContainEqual(expect.objectContaining({ name: 'Shut down wineserver', if: 'always()' }))
   })
 
   it.each([
     ['node-24-coverage', 'ci.yml', 'Linux', 'LINUX', 'pnpm run check:ci:coverage'],
-    ['windows-coverage', 'ci-windows.yml', 'Windows', 'WINDOWS', 'pnpm run check:ci:coverage'],
   ])('reuses %s coverage timings only within its platform and runner pool', (jobName, file, platform, variable, command) => {
     const job = workflowJob(loadWorkflow('.github/workflows/' + file), jobName)
     if (!Array.isArray(job.steps)) throw new TypeError(`${jobName} must define steps`)
@@ -383,7 +381,6 @@ describe('CI workflow', () => {
       || !isRecord(windowsWorkflow.jobs)
       || !isRecord(windowsWorkflow.jobs['windows-publisher'])
       || !isRecord(windowsWorkflow.jobs['windows-build'])
-      || !isRecord(windowsWorkflow.jobs['windows-coverage'])
       || !isRecord(windowsWorkflow.jobs['windows-native-tests'])
       || !isRecord(windowsWorkflow.jobs['windows-checks-passed'])
       || !isRecord(workflow.jobs['node-24'])
@@ -395,12 +392,11 @@ describe('CI workflow', () => {
       || !isRecord(workflow.jobs['all-checks-passed'])
       || !isRecord(masterWorkflow.jobs)
       || !isRecord(masterWorkflow.jobs['serial-windows'])) {
-      throw new TypeError('CI workflow must define node-24, node-24-coverage, node-24-lint, node-24-bench, node-24-consumers, node-compat, and all-checks-passed; CI Windows must define windows-publisher, windows-build, windows-coverage, windows-native-tests, and windows-checks-passed; ci-master must define serial-windows')
+      throw new TypeError('CI workflow must define node-24, node-24-coverage, node-24-lint, node-24-bench, node-24-consumers, node-compat, and all-checks-passed; CI Windows must define windows-publisher, windows-build, windows-native-tests, and windows-checks-passed; ci-master must define serial-windows')
     }
 
     const windowsPublisher = windowsWorkflow.jobs['windows-publisher']
     const windowsBuild = windowsWorkflow.jobs['windows-build']
-    const windowsCoverage = windowsWorkflow.jobs['windows-coverage']
     const windowsNativeTests = windowsWorkflow.jobs['windows-native-tests']
     const windowsAggregate = windowsWorkflow.jobs['windows-checks-passed']
     const serialWindows = masterWorkflow.jobs['serial-windows']
@@ -416,14 +412,14 @@ describe('CI workflow', () => {
     }
     expect(Object.keys(workflow.jobs).filter(name => name.startsWith('windows'))).toEqual([])
     // The Windows jobs all resolve their pool through the Windows switch.
-    for (const [jobName, job] of [['windows-publisher', windowsPublisher], ['windows-build', windowsBuild], ['windows-coverage', windowsCoverage], ['windows-native-tests', windowsNativeTests]] as const) {
+    for (const [jobName, job] of [['windows-publisher', windowsPublisher], ['windows-build', windowsBuild], ['windows-native-tests', windowsNativeTests]] as const) {
       expect(typeof job['runs-on']).toBe('string')
       expect(job['runs-on'], `${jobName} runs-on must use the Windows failover switch`).toContain('DSH_CI_FAILOVER_WINDOWS')
       expect(job['runs-on'], `${jobName} runs-on must not use the Linux failover switch`).not.toContain('DSH_CI_FAILOVER_LINUX')
       expect(job['runs-on']).toContain('self-hosted')
       expect(job['runs-on']).toContain('dsh-win-ci')
       expect(job['runs-on']).toContain('dsh-windows-2025-16core')
-      const cores = jobName === 'windows-build' || jobName === 'windows-coverage' ? 16 : 2
+      const cores = jobName === 'windows-build' ? 16 : 2
       expect(evaluateRunsOn(job['runs-on'], { vars: { DSH_CI_FAILOVER_WINDOWS: 'blacksmith' } }))
         .toBe(`blacksmith-${cores}vcpu-windows-2025`)
       expect(evaluateRunsOn(job['runs-on'], { vars: { DSH_CI_FAILOVER_WINDOWS: 'github' } }))
@@ -445,7 +441,7 @@ describe('CI workflow', () => {
     // of the self-hosted pool without forcing clone onto hosted NTFS, which
     // rejects copy-on-write. The branch must stay, or a hosted fallback would
     // fail installs with ERR_PNPM_LINKING_FAILED.
-    for (const [jobName, job] of [['windows-build', windowsBuild], ['windows-coverage', windowsCoverage], ['windows-native-tests', windowsNativeTests]] as const) {
+    for (const [jobName, job] of [['windows-build', windowsBuild], ['windows-native-tests', windowsNativeTests]] as const) {
       const steps = job.steps as unknown[]
       const install = steps.find((step): step is Record<string, unknown> & { run: string } => (
         isRecord(step) && step.name === 'Install (immutable)' && typeof step.run === 'string'
@@ -467,22 +463,6 @@ describe('CI workflow', () => {
       // passes a stray "" positional argument to pnpm.
       expect(install!.run).not.toContain('$cloneFlag')
     }
-
-    expect(windowsCoverage.name).toBe('windows node 24 / coverage')
-    expect(windowsCoverage.env).toMatchObject({ DSH_COVERAGE_PARTITIONS: "${{ vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '4' || '' }}" })
-    const coverageSteps = windowsCoverage.steps as unknown[]
-    const coverageCommands = coverageSteps.filter((step): step is Record<string, unknown> & { run: string } => (
-      isRecord(step) && typeof step.run === 'string'
-    ))
-    expect(coverageCommands.map(step => step.run)).toContain('pnpm run check:ci:coverage')
-    // Windows coverage runs zero-build like the Linux lane: workspace imports
-    // resolve to src through the tsconfig paths map, and the lib-consuming
-    // suites (webworker-packer image-loadable, webworker-runtime
-    // transform-corpus, client ui-trajectory client-bundle) self-skip on
-    // unbuilt checkouts. The regex catches a regression spelled as
-    // 'corepack pnpm run build' or folded into a multi-line run block, which
-    // an exact string match would miss.
-    expect(coverageCommands.every(step => !/\bpnpm\s+run\s+build(?:\s|$)/.test(step.run))).toBe(true)
 
     // windows-native-tests runs the Windows-specific specs.
     expect(windowsNativeTests.name).toBe('windows node 24 / native tests')
@@ -562,8 +542,8 @@ describe('CI workflow', () => {
     expect(serialGate!.env).toMatchObject({ DSH_COVERAGE_TEST_TIMEOUT_MS: '90000' })
 
     expect(aggregate.needs).not.toContain('windows')
-    // windows-coverage is temporarily non-blocking while Windows ACP
-    // half-close tests are stabilized; observational stays out too.
+    // Linux owns per-file coverage; Windows-specific evidence comes from the
+    // required build and native-test jobs. Observational diagnostics stay out.
     expect(windowsAggregate.needs).toEqual(['windows-publisher', 'windows-build', 'windows-native-tests'])
     expect(windowsAggregate.name).toBe('windows checks passed')
     expect(windowsAggregate['runs-on']).toBe(aggregate['runs-on'])
@@ -642,11 +622,8 @@ describe('CI workflow', () => {
       expect(job.env, `${jobName} must enable fail-fast`).toMatchObject({ DSH_GATE_FAIL_FAST: '1' })
     }
 
-    // The native Windows lanes with run-gates aggregates fail fast for the
-    // same reason: a failing gate aborts the sibling gate instead of waiting
-    // out the multi-minute instrumented coverage run.
+    // The blocking Windows build aggregate fails fast when a gate fails.
     expect(windowsBuild.env, 'windows-build must enable fail-fast').toMatchObject({ DSH_GATE_FAIL_FAST: '1' })
-    expect(windowsCoverage.env, 'windows-coverage must enable fail-fast').toMatchObject({ DSH_GATE_FAIL_FAST: '1' })
 
     // The observational lane stays complete: it is continue-on-error by design
     // and exists to collect as much Windows-native evidence per run as

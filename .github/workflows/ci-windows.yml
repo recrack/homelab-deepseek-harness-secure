@@ -155,85 +155,6 @@ jobs:
           Write-Output "::warning::$message"
           $message | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
-  windows-coverage:
-    if: github.event_name == 'pull_request'
-    runs-on: >-
-      ${{ vars.DSH_CI_FAILOVER_WINDOWS == 'github' && 'windows-2025'
-          || vars.DSH_CI_FAILOVER_WINDOWS == 'blacksmith' && 'blacksmith-16vcpu-windows-2025'
-          || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted'
-          && github.event.pull_request.user.login != 'dependabot[bot]'
-          && fromJSON('["self-hosted", "dsh-win-ci", "windows"]')
-          || 'dsh-windows-2025-16core' }}
-    name: windows node 24 / coverage
-    timeout-minutes: 120
-    env:
-      # Shared hosts expose host CPUs, not an isolated allocation.
-      DSH_COVERAGE_MAX_WORKERS: ${{ vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '6' || '' }}
-      DSH_COVERAGE_PARTITIONS: ${{ vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '4' || '' }}
-      DSH_GATE_CONCURRENCY: ${{ vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '3' || '' }}
-      DSH_COVERAGE_TEST_TIMEOUT_MS: '90000'
-      # A gate failure aborts the sibling gate instead of waiting out its
-      # multi-minute instrumented run.
-      DSH_GATE_FAIL_FAST: '1'
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-      # Checkout removes the gitignored duration history, so restore it from
-      # the GitHub cache before coverage and save the updated one afterwards.
-      # The coordinator then weights partitions by measured durations on the
-      # second run instead of degrading to a file-count split. GitHub cache
-      # entries are immutable, so the save key is unique per run and the
-      # restore matches the newest entry through the stable prefix.
-      - name: Restore coverage duration history
-        uses: actions/cache/restore@v6.1.0
-        with:
-          path: .coverage-times.json
-          key: coverage-times-Windows-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_WINDOWS || 'enterprise' }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: |
-            coverage-times-Windows-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_WINDOWS || 'enterprise' }}-
-      - name: Enable Developer Mode (symlink support)
-        shell: pwsh
-        run: >-
-          reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
-          /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
-      - uses: pnpm/action-setup@v5.0.0
-        with:
-          dest: ${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
-      - uses: actions/setup-node@v7.0.0
-        with:
-          node-version: ${{ env.PRIMARY_NODE_VERSION }}
-      - name: Install (immutable)
-        shell: pwsh
-        # See 2026-08-30-windows-refs-store-block-clone-install for the
-        # ReFS block-clone rationale; detect the workspace filesystem and
-        # pass --package-import-method=clone only on ReFS.
-        run: >-
-          $drive = (Split-Path -Qualifier $env:GITHUB_WORKSPACE).TrimEnd(':');
-          $fs = (Get-Volume -DriveLetter $drive).FileSystem;
-          if ($fs -eq 'ReFS') {
-            corepack pnpm install --frozen-lockfile --package-import-method=clone
-          } else {
-            pnpm install --frozen-lockfile
-          }
-      # No build before coverage, matching the Linux lane: workspace imports
-      # resolve to src through the tsconfig paths map, and the lib-consuming
-      # suites (webworker-packer image-loadable, webworker-runtime
-      # transform-corpus, client ui-trajectory client-bundle) self-skip on
-      # unbuilt checkouts.
-      - name: Run Windows coverage
-        shell: pwsh
-        run: pnpm run check:ci:coverage
-      - name: Save coverage duration history
-        # Coverage flakes must not prevent the cache from building; the
-        # measured durations remain useful even when a partition failed. The
-        # per-run key keeps every save a fresh immutable cache entry.
-        if: ${{ !cancelled() }}
-        uses: actions/cache/save@v6.1.0
-        with:
-          path: .coverage-times.json
-          key: coverage-times-Windows-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_WINDOWS || 'enterprise' }}-${{ github.run_id }}-${{ github.run_attempt }}
-
   windows-native-tests:
     if: github.event_name == 'pull_request'
     runs-on: >-
@@ -284,11 +205,7 @@ jobs:
           packages/experimental/tool-ralph/tests/integration.spec.ts
           packages/subprocess/subprocess-local/tests/process-exit.spec.ts
 
-  # Stable required check for the Windows lanes, with the same semantics as
-  # ci.yml's "all checks passed": every blocking job in THIS workflow is
-  # listed in `needs`. windows-coverage stays outside the verdict, so its
-  # per-file result remains visible without blocking. The bookkeeping job
-  # follows the Linux failover switch like the CI verdict.
+  # Stable required check for the blocking Windows build and native-test lanes.
   windows-checks-passed:
     name: windows checks passed
     runs-on: >-

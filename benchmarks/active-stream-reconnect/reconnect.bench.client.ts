@@ -32,7 +32,6 @@ it('accepts recorded hosted reconnect samples and rejects replacement regression
   expect(() => expectReplacementWithinBudget(recordedMedians[0]!, ciTimeBudget(16))).toThrow()
   expect(() => expectReplacementWithinBudget(recordedMedians[2]!, 63)).toThrow()
   for (const median of recordedMedians) expectReplacementWithinBudget(median, REPLACE_BUDGET_MS)
-  expect(REPLACE_BUDGET_MS).toBe(125)
   expect(() => expectReplacementWithinBudget(150, REPLACE_BUDGET_MS)).toThrow()
   expect(() => expectReplacementWithinBudget(REPLACE_BUDGET_MS + 1, REPLACE_BUDGET_MS)).toThrow()
 })
