@@ -129,7 +129,6 @@ describe('CI workflow', () => {
     expect(blocking.sort()).toEqual([
       'node-24',
       'node-24-bench',
-      'node-24-consumers',
       'node-24-coverage',
       'node-24-lint',
       'node-compat',
@@ -144,7 +143,6 @@ describe('CI workflow', () => {
 
   it('retains aggregate diagnostics in required builds and protected publication', () => {
     for (const [file, name, command] of [
-      ['ci.yml', 'node-24-consumers', 'pnpm run check:ci:consumers'],
       ['ci-windows.yml', 'windows-build', 'pnpm run check:ci:windows-blocking'],
     ] as const) {
       const job = workflowJob(loadWorkflow('.github/workflows/' + file), name)
@@ -252,10 +250,12 @@ describe('CI workflow', () => {
     }
   })
 
-  it('omits Windows coverage while retaining Wine cleanup', () => {
+  it('omits PR consumer snapshots and Windows coverage while retaining Wine cleanup', () => {
+    const ci = loadWorkflow('.github/workflows/ci.yml')
     const windows = loadWorkflow('.github/workflows/ci-windows.yml')
     const wine = workflowJob(loadWorkflow('.github/workflows/ci-master.yml'), 'windows')
-    if (!isRecord(windows.jobs)) throw new TypeError('CI Windows must define jobs')
+    if (!isRecord(ci.jobs) || !isRecord(windows.jobs)) throw new TypeError('CI workflows must define jobs')
+    expect(ci.jobs['node-24-consumers']).toBeUndefined()
     expect(windows.jobs['windows-coverage']).toBeUndefined()
     expect(wine.steps).toContainEqual(expect.objectContaining({ name: 'Shut down wineserver', if: 'always()' }))
   })
@@ -315,7 +315,7 @@ describe('CI workflow', () => {
     }
   })
 
-  it.each(['node-24', 'node-24-coverage', 'node-24-consumers'])(
+  it.each(['node-24', 'node-24-coverage'])(
     '%s keeps tool and fixture temporary files under runner cleanup',
     (jobName) => {
       const job = workflowJob(loadWorkflow('.github/workflows/ci.yml'), jobName)
@@ -324,17 +324,9 @@ describe('CI workflow', () => {
         name: 'Use runner-owned temporary storage',
         run: [
           'echo "TMPDIR=${{ runner.temp }}" >> "$GITHUB_ENV"',
-          ...(jobName === 'node-24-consumers'
-            ? ['echo "PLAYWRIGHT_BROWSERS_PATH=${RUNNER_TEMP%/*}/ms-playwright" >> "$GITHUB_ENV"']
-            : []),
           '',
         ].join('\n'),
       })
-      if (jobName === 'node-24-consumers') {
-        const browserCache: unknown = job.steps.find(step => isRecord(step) && isRecord(step.with)
-          && step.with.path === '${{ env.PLAYWRIGHT_BROWSERS_PATH }}')
-        expect(browserCache).toMatchObject({ uses: 'actions/cache/restore@v6.1.0' })
-      }
       const store: unknown = job.steps.find(step => isRecord(step) && step.name === 'Configure pnpm store path')
       expect(store).toMatchObject({
         run: [
@@ -387,12 +379,11 @@ describe('CI workflow', () => {
       || !isRecord(workflow.jobs['node-24-coverage'])
       || !isRecord(workflow.jobs['node-24-lint'])
       || !isRecord(workflow.jobs['node-24-bench'])
-      || !isRecord(workflow.jobs['node-24-consumers'])
       || !isRecord(workflow.jobs['node-compat'])
       || !isRecord(workflow.jobs['all-checks-passed'])
       || !isRecord(masterWorkflow.jobs)
       || !isRecord(masterWorkflow.jobs['serial-windows'])) {
-      throw new TypeError('CI workflow must define node-24, node-24-coverage, node-24-lint, node-24-bench, node-24-consumers, node-compat, and all-checks-passed; CI Windows must define windows-publisher, windows-build, windows-native-tests, and windows-checks-passed; ci-master must define serial-windows')
+      throw new TypeError('CI workflow must define node-24, node-24-coverage, node-24-lint, node-24-bench, node-compat, and all-checks-passed; CI Windows must define windows-publisher, windows-build, windows-native-tests, and windows-checks-passed; ci-master must define serial-windows')
     }
 
     const windowsPublisher = windowsWorkflow.jobs['windows-publisher']
@@ -404,7 +395,6 @@ describe('CI workflow', () => {
     const node24Coverage = workflow.jobs['node-24-coverage']
     const node24Lint = workflow.jobs['node-24-lint']
     const node24Bench = workflow.jobs['node-24-bench']
-    const node24Consumers = workflow.jobs['node-24-consumers']
     const nodeCompat = workflow.jobs['node-compat']
     const aggregate = workflow.jobs['all-checks-passed']
     if (!Array.isArray(aggregate.needs) || !Array.isArray(windowsAggregate.needs)) {
@@ -568,7 +558,7 @@ describe('CI workflow', () => {
     // Linux failover is a separate switch: the three enterprise Linux workers
     // and the verdict job resolve their pool through DSH_CI_FAILOVER_LINUX,
     // never the Windows switch.
-    for (const [jobName, job] of [['node-24', node24], ['node-24-coverage', node24Coverage], ['node-24-lint', node24Lint], ['node-24-consumers', node24Consumers]] as const) {
+    for (const [jobName, job] of [['node-24', node24], ['node-24-coverage', node24Coverage], ['node-24-lint', node24Lint]] as const) {
       expect(typeof job['runs-on']).toBe('string')
       expect(job['runs-on'], `${jobName} runs-on must use the Linux failover switch`).toContain('DSH_CI_FAILOVER_LINUX')
       expect(job['runs-on'], `${jobName} runs-on must not use the Windows failover switch`).not.toContain('DSH_CI_FAILOVER_WINDOWS')
@@ -618,7 +608,7 @@ describe('CI workflow', () => {
     // a red aggregate does not keep burning runner time on the remaining
     // gates. Removing the flag silently reverts to running every independent
     // gate to completion.
-    for (const [jobName, job] of [['node-24', node24], ['node-24-coverage', node24Coverage], ['node-24-consumers', node24Consumers], ['node-compat', nodeCompat]] as const) {
+    for (const [jobName, job] of [['node-24', node24], ['node-24-coverage', node24Coverage], ['node-compat', nodeCompat]] as const) {
       expect(job.env, `${jobName} must enable fail-fast`).toMatchObject({ DSH_GATE_FAIL_FAST: '1' })
     }
 
@@ -881,7 +871,6 @@ describe('CI workflow', () => {
     const redirectLanes = [
       [prWorkflow, 'node-24'],
       [prWorkflow, 'node-24-coverage'],
-      [prWorkflow, 'node-24-consumers'],
       [masterWorkflow, 'serial-linux-selfhosted'],
     ] as const
     for (const [workflow, jobKey] of redirectLanes) {
@@ -1117,7 +1106,6 @@ describe('bubblewrap preparation script', () => {
   const hostedOnly = "vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]'"
   const cachedJobs = new Map<string, string | undefined>([
     ['ci.yml:node-24-coverage', hostedOnly],
-    ['ci.yml:node-24-consumers', hostedOnly],
     ['ci.yml:node-compat', hostedOnly],
   ])
 
