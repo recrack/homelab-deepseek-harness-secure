@@ -765,13 +765,17 @@ export function parsePersistenceProse(value: unknown): PersistenceChangeProsePai
   keys(pair, ['en'], 'persistence prose')
   const sections = record(pair.en, 'persistence prose en')
   keys(sections, ['summary', 'compatibility', 'verification'], 'persistence prose en')
-  for (const [name, value] of Object.entries(sections)) {
-    const text = textValue(value, `en.${name}`)
+  const prose = {
+    summary: textValue(sections.summary, 'en.summary'),
+    compatibility: textValue(sections.compatibility, 'en.compatibility'),
+    verification: textValue(sections.verification, 'en.verification'),
+  }
+  for (const [name, text] of Object.entries(prose)) {
     if (text.trim().length === 0 || text.includes(EXPLANATION_PLACEHOLDER) || text.includes(EVIDENCE_PLACEHOLDER)) {
       throw new Error(`en.${name} requires authored prose without scaffold placeholders`)
     }
   }
-  return { en: sections as unknown as PersistenceChangeProse }
+  return { en: prose }
 }
 
 function updateDocument(source: string, change: PersistenceChangeRecord, prose?: PersistenceChangeProse): string {
