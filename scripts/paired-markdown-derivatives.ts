@@ -1,6 +1,6 @@
 /**
  * Separate byte-identical Chinese Markdown code blocks from the primary checks
- * performed on their unsuffixed English siblings. The bilingual pairing gate
+ * performed on their unsuffixed English siblings. The translated-document checker
  * owns cross-language identity; source-oriented gates consume one copy.
  */
 

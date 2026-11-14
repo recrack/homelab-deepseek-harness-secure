@@ -1,7 +1,5 @@
 # LiveShare
 
-English | [中文](liveshare.zh.md)
-
 The opt-in LiveShare bundle (`@deepseek-ai/dsh-experimental-liveshare`) lets one owner share one or more Sessions with an external viewer through the separate Liveshare server. A viewer never receives the owner's tools: the owner host reads each viewer request itself, dispatches it as that viewer's own Peer, whose `share-viewer` principal the Gateway decides through the [remote access](../../packages/api/remote-access/README.md) policy this package registers, and constrains everything a shared Session runs on the viewer's behalf to the workspace the share granted. The [package README](../../packages/experimental/liveshare/README.md) owns configuration, the client faces, and the limitations; the [Owner note](../../.agents/notes/implemented/feature/2026-09-13-liveshare-protocol-and-owner-surfaces.md) owns the security posture behind them.
 
 A share starts with the Session it was created for, and `liveshareShares.addSessions` adds more source Sessions to it. Every source is served under the share's ACL, tier, lifetime, fork switch, and exposed endpoints; the Relay registration and the viewer page keep the first source, and a reader reaches the others through the Session list the policy now binds. Every source must belong to the share's one Workspace: the Host refuses an addition it cannot place there, so all readers stay inside one workspace root. Stopping the share ends all of its sources.

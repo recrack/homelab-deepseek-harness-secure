@@ -22,4 +22,4 @@ When the user asks what an upgrade affects, report the applicable guides and the
   Without that runtime, read the index 12 lines per call from its start.
 - Source checkout: the repository has no such index. Read the `description` line at the top of each `docs/upgrade-guide/v<T>/<item>/guide.md` in the chosen directories.
 
-Read only the `guide.md`, or `guide.zh.md` for a Chinese-speaking user, of items that change a surface from step 3. Report the guides used and the ones skipped with the reason. When a needed guide or the documentation directory is missing, say so instead of answering from another version.
+Read only the `guide.md` of items that change a surface from step 3. Report the guides used and the ones skipped with the reason. When a needed guide or the documentation directory is missing, say so instead of answering from another version.

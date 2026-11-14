@@ -1,10 +1,10 @@
-# Translation prompt (pipeline asset)
+# Translation prompt (optional translation workflow)
 
-本文件是自动翻译流水线的 prompt 模板；从 `# Translation Prompt` 开始的正文会逐字进入模型请求，因此本文件不参与双语配对（见 [README.md](README.md) 排除清单）。模板正文与内嵌 few-shot 正误例由 jingtingxiang 基于对存量译文的质量评审撰写，是流水线行为的拍板基线。渲染时把 [terminology.md](terminology.md) 整表填入 `{{terminology}}`；除此之外不注入任何其他仓库文件（translation-rules.md 约束人和 agent 的翻译工作，不注入本模板）。[style-samples.md](style-samples.md) 定义文体，模板中的 Examples 只用于说明典型问题，两者冲突时以文体样例为准。本模板遵循 [提示词 v4 约定 Agent Note](../../.agents/notes/archived/process/2026-07-23-translation-prompt-v4-contract.md) 记录的兼容协议。修改本文件会改变翻译行为，需正常经过 PR 评审。
+本文件保存用户明确要求翻译时使用的 prompt 模板；`# Translation Prompt` 起的正文会逐字进入模型请求。渲染器把 [terminology.md](terminology.md) 填入 `{{terminology}}`，并保留模板其余内容不变。[translation-rules.md](translation-rules.md) 约束显式请求的翻译工作；[style-samples.md](style-samples.md) 提供文体参考。验证脚本使用的中英样例是内存中的合成数据，不对应仓库文档配对。修改模板会改变翻译行为，需正常经过 PR 评审。
 
 ## 占位符约定
 
-流水线渲染模板时替换以下占位符，除此之外不改写系统消息：
+渲染器处理显式请求的翻译时替换以下占位符，除此之外不改写系统消息：
 
 | 占位符 | 填入内容 | 来源 |
 |---|---|---|
@@ -12,22 +12,13 @@
 | `{{target_lang}}` | 目标语言名（`Chinese` / `English`） | 与 `{{source_lang}}` 相对 |
 | `{{terminology}}` | [terminology.md](terminology.md) 的完整表格（Markdown 原文） | 渲染时读取仓库当前版本，不缓存 |
 
-流水线只识别上表中的占位符，并且一次翻译整篇文档。它不支持 `{{to}}`、`{{title_prompt}}`、`{{summary_prompt}}`、`{{terms_prompt}}`、`{{imt_style_guide}}`、`{{translation_rules}}` 或 `%%` 分段协议；输出采用模板正文规定的三段 XML，流水线解析取 `<final>` 段。
+渲染器只识别上表中的占位符，并且一次翻译整篇文档。它不支持 `{{to}}`、`{{title_prompt}}`、`{{summary_prompt}}`、`{{terms_prompt}}`、`{{imt_style_guide}}`、`{{translation_rules}}` 或 `%%` 分段协议；输出采用模板正文规定的三段 XML，流水线解析取 `<final>` 段。
 
-语言切换行：已有配对的源文件自带切换行，模型按模板规则翻转即可。全新配对的源文件没有切换行，模型也无从得知文件名——此时由流水线在解析 `<final>` 后按目标文件名插入或校正切换行（机械后处理，配对门禁兜底校验）。
+语言切换行：已有翻译的源文件自带切换行，模型按模板规则翻转即可。新翻译的源文件没有切换行，模型也无从得知文件名；渲染器在解析 `<final>` 后按目标文件名插入或校正切换行。
 
-## Few-shot 金标
+## 回归样例
 
-流水线使用**整篇文档**的中英对照作为 few-shot，不是模板内嵌的句子级正误例。以下 5 组配对文档均经过人工评审；前四组随当前文档更新，第五组保留冻结的历史样例：
-
-- `README.md` ↔ `README.zh.md`
-- `docs/development.md` ↔ `docs/development.zh.md`
-- `docs/i18n/README.md` ↔ `docs/i18n/README.zh.md`
-- `docs/i18n/translation-rules.md` ↔ `docs/i18n/translation-rules.zh.md`
-- `.agents/notes/archived/process/2026-07-02-bilingual-docs-and-pairing-gate.md` ↔ 对应 `.zh.md`
-
-注入方式：在系统消息（本模板）之后、待译文档之前，每组作为一轮示例对话——user 消息为源文档全文，assistant 消息为定稿译文全文（裸文本，不带三段 XML 包装；只有真实请求要求三段输出）。上下文不足时按上列顺序从后往前删减组数。这 5 组也是评审校准锚点（见 [style-samples.md](style-samples.md)），改动任何一组即改变流水线行为。
-
+`verify-translation-prompt` 使用 `scripts/verify-translation-prompt.ts` 中的合成样例检查双向 prompt、消息组装和响应解析。样例保存在 TypeScript 中，不要求仓库维护中文 Markdown 文档。
 ## 模板正文
 
 ````text
@@ -43,10 +34,10 @@ Apply these authorities in order:
 
 1. Preserve the source meaning and the required document structure, protected content, and formatting.
 2. Follow the injected terminology table exactly.
-3. Use the injected whole-document gold pairs to calibrate target-language voice and phrasing.
+3. Use the supplied whole-document examples to calibrate target-language voice and phrasing.
 4. Apply the general writing guidance and illustrative examples in this prompt.
 
-A lower-priority rule may refine but never override a higher-priority requirement. Gold pairs calibrate voice; they are not a translation memory. No style preference, gold-pair phrasing, or embedded example may override source meaning, required structure, protected content, or the terminology table.
+A lower-priority rule may refine but never override a higher-priority requirement. Examples calibrate voice; they are not a translation memory. No style preference, gold-pair phrasing, or embedded example may override source meaning, required structure, protected content, or the terminology table.
 
 ## Quality Requirements
 
@@ -56,7 +47,7 @@ A lower-priority rule may refine but never override a higher-priority requiremen
 - Keep each prose paragraph on one physical line. Use paragraph breaks, not hard-wrapped lines inside a paragraph.
 - Fenced code blocks must be byte-identical to the source, including info strings, whitespace, and ALL comments inside them. Do NOT translate or reformat any content inside code blocks. This is a hard rule with no exceptions.
 - Inline code spans must be kept verbatim. This includes commands, flags, paths, identifiers, API and event names, config keys, protocol values, version numbers, and other machine-readable tokens. Never translate or reformat them.
-- Every repository-relative document link must keep the source link's semantic target and exact query/fragment suffix. When the target belongs to the active bilingual corpus, English output uses its `.md` path and Chinese output uses its `.zh.md` path; a missing counterpart in that corpus is an error, while targets outside it keep the original path. External URLs, images, and pure in-page fragments stay unchanged. Translate link text.
+- Every repository-relative document link must keep the source link's semantic target and exact query/fragment suffix. Use a `.zh.md` path only when the target has a translated sibling; otherwise keep the canonical English `.md` path. External URLs, images, and pure in-page fragments stay unchanged. Translate link text.
 - Language switcher line: when an English source contains `English | [中文](source-filename.zh.md)`, write `[English](source-filename.md) | 中文`. When a Chinese source contains `[English](source-filename.md) | 中文`, write `English | [中文](source-filename.zh.md)`. Do NOT copy the source switcher unchanged. If the source has no switcher, do not invent a filename or switcher; the pipeline inserts the canonical target switcher after parsing `<final>`.
 - Preserve emphasis marker types and the semantic spans they cover. Do not add, remove, move, or change bold and italic markers.
 

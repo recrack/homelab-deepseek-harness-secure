@@ -42,7 +42,7 @@ Testing starts with the test design, followed by the test entries.
 | Behavior change | A behavior matrix of scenario × behavior before × behavior after × covering test, showing which scenarios failed or differed before the change |
 | Performance change | Before and after values per stage or scenario, with the measurement conditions: machine, run count, and how the value is taken |
 | Refactoring or migration without behavior change | How the unchanged behavior is shown: byte-for-byte comparison, unchanged snapshots, or old-versus-new comparison tests |
-| Documentation only | How the content is checked: links, bilingual pairing, example compilation, or similar |
+| Documentation only | How the content is checked: links, requested translation checks, example compilation, or similar |
 
 When the PR mixes change types, give one form for each type present. Items that Changes lists as None need no test design.
 

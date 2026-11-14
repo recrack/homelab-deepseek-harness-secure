@@ -1544,7 +1544,7 @@ describe('Documentation site publication', () => {
 })
 
 describe('Git hooks', () => {
-  it('leaves frozen Agent Note sidecars to the archive verifier', () => {
+  it('verifies archived notes without translation-pairing hooks', () => {
     const lefthook = loadWorkflow('lefthook.yml')
 
     for (const hookName of ['pre-commit', 'pre-merge-commit']) {
@@ -1552,11 +1552,15 @@ describe('Git hooks', () => {
       if (!isRecord(hook) || !Array.isArray(hook.jobs)) {
         throw new TypeError(`lefthook must define ${hookName} jobs`)
       }
+      const archive: unknown = hook.jobs.find(
+        (job: unknown) => isRecord(job) && job.name === 'archived agent notes',
+      )
       const pairing: unknown = hook.jobs.find(
         (job: unknown) => isRecord(job) && job.name === 'translation pairing (staged records)',
       )
 
-      expect(pairing).toMatchObject({ exclude: ['.agents/notes/archived/**'] })
+      expect(archive).toMatchObject({ run: 'node_modules/.bin/tsx scripts/verify-archived-agent-notes.ts' })
+      expect(pairing).toBeUndefined()
     }
   })
 })

@@ -1,8 +1,6 @@
 # Translation rules
 
-English | [中文](translation-rules.zh.md)
-
-How to translate between the two sides of a documentation pair in this repo. Both languages carry equal authority ([README.md](README.md)): a change is authored in either language, and that side is the source for that update — these rules govern producing or updating the counterpart. They bind humans and agents equally. Routine agent work translates the changed content directly in one terminology-guided pass; the extended [.agents/skills/dsh-translate-docs](../../.agents/skills/dsh-translate-docs/SKILL.md) workflow runs only when the user explicitly invokes it. Rule levels follow RFC 2119 usage: **MUST** / **MUST NOT** are gate- or review-blocking; **SHOULD** needs a stated reason to deviate; **MAY** is discretionary.
+These rules apply when the user requests a translated Markdown page. English and its requested translation carry equal authority for that page: a change may begin in either language, and the edited side is the source for that update. The rules bind human and agent authors. The extended [.agents/skills/dsh-translate-docs](../../.agents/skills/dsh-translate-docs/SKILL.md) workflow runs only when the user explicitly invokes it. Rule levels follow RFC 2119 usage: **MUST** / **MUST NOT** are review-blocking; **SHOULD** needs a stated reason to deviate; **MAY** is discretionary.
 
 ## Faithfulness
 
@@ -21,16 +19,16 @@ How to translate between the two sides of a documentation pair in this repo. Bot
 
 ## Structure preservation
 
-The pairing gate checks heading depths, fenced code blocks, table row and column counts, list kinds, ordered-list starts, list item counts, link locale, and semantic targets. Preserve the rest of the frame manually; the paired files MUST match one to one in:
+The optional pairing checker checks heading depths, fenced code blocks, table row and column counts, list kinds, ordered-list starts, list item counts, link locale, and semantic targets. Preserve the rest of the frame manually; requested translated files MUST match one to one in:
 
 - heading hierarchy (same levels, same order — heading TEXT is translated),
 - list shape and numbering,
 - tables (same columns, same row order; header cells translated per terminology),
 - fenced code blocks — **byte-identical, including comments**; the pairing signature compares their info strings and contents, and ` ```ts ` blocks compile under `doc-typecheck`,
 - inline code spans (commands, flags, config keys, file paths, event names, API names, version numbers) — verbatim, never translated or reformatted,
-- links and anchors: every relative document link MUST keep the same semantic target and exact query/fragment suffix. When the target belongs to the active bilingual corpus, the English side uses its `.md` path and the Chinese side uses its `.zh.md` path; a missing counterpart in that corpus is an error, while targets outside it keep the original path. External URLs, images, and pure in-page fragments stay unchanged. The language switcher remains the explicit cross-locale exception, and a README rendered outside GitHub MAY use the canonical public repository URL to its exact counterpart as documented in [README.md](README.md). Link TEXT is translated.
+- links and anchors: every relative document link MUST keep the same semantic target and exact query/fragment suffix. Use a translated sibling's `.zh.md` path only when that file exists; otherwise keep the canonical English `.md` path. External URLs, images, and pure in-page fragments stay unchanged. A language switcher is the explicit cross-locale exception. A README rendered outside GitHub MAY use the canonical public repository URL to its exact translated sibling. Link TEXT is translated.
 
-The repo's Markdown conventions apply to `.zh.md` files unchanged: one physical line per paragraph (`verify-md-wrap`), resolving relative links (`verify-md-links`), exactly one trailing newline.
+Translated Markdown follows the same conventions: one physical line per paragraph, resolving relative links, and exactly one trailing newline. The optional pairing checker can verify structure and recorded content, but documentation gates do not require translations.
 
 ## Terminology
 
@@ -54,7 +52,7 @@ These rules govern the Chinese side; the English side follows the repo's normal 
 ## Quality bar
 
 - A pair is done when a bilingual engineer reading either file alone gets everything a reader of the other gets — same facts, same caveats, same tone — and nothing extra.
-- Run `pnpm run verify-translation-pairing` and the rest of `doc-sync` for records, switchers, heading depths, code blocks, table row and column counts, list kinds, ordered-list starts, list item counts, links, and repository Markdown rules. Human review owns list and table order, noncanonical list numbering, inline code, emphasis, meaning, terminology, and tone.
+- When the user requests a translated page, run `pnpm run verify-translation-pairing <pair>` to check its record, switchers, heading depths, code blocks, table row and column counts, list kinds, ordered-list starts, list item counts, and links. Human review owns list and table order, noncanonical list numbering, inline code, emphasis, meaning, terminology, and tone.
 
 ## References
 

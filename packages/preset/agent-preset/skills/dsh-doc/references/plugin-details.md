@@ -6,7 +6,7 @@ The templates include a single-image detail document and a text-free example SVG
 
 ## Declare the document
 
-Set `meta.detail` in `locale/en.json` to `"docs/DETAIL.md"`, and supply a document in the user's language when it differs from English. For example, Japanese uses `"docs/DETAIL.ja.md"` in `locale/ja.json`; Chinese uses `"docs/DETAIL.zh.md"` in `locale/zh.json`. Update any template value that points to English. Preserve localized `meta.title` and `meta.description`, adding them when creating a locale file.
+Set `meta.detail` in each locale file to `"docs/DETAIL.md"` when the same English details page serves every locale. A separate translated Markdown page is optional and should be added only when explicitly requested. Preserve localized `meta.title` and `meta.description`, adding them when creating a locale file.
 
 Each path is relative to the package root, uses `/`, stays inside the package, and ends in `.md` or `.markdown`. Use `docs/` to publish the document and its images together; a subdirectory is a packaging convention, not a runtime path restriction. Other locales may omit `meta.detail` and fall back through the language chain to English, or explicitly point to the English document. The page uses the package README only when no locale in that chain declares a detail document.
 

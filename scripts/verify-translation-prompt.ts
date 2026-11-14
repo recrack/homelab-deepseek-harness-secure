@@ -24,21 +24,23 @@ try {
   if (mode !== undefined && mode !== '--snapshot') throw new Error(`unsupported argument ${JSON.stringify(mode)}`)
   const document = read('docs/i18n/translation-prompt.md')
   const terminology = read('docs/i18n/terminology.md')
-  // Synthetic reviewed examples, not live documents: editing a paired document must not
-  // churn the prompt snapshot. Each pair mirrors the other side's structure and uses
-  // terminology-table forms.
-  const examplePaths = [
-    ['scripts/fixtures/translation-prompt/examples/product.md', 'scripts/fixtures/translation-prompt/examples/product.zh.md'],
-    ['scripts/fixtures/translation-prompt/examples/rules.md', 'scripts/fixtures/translation-prompt/examples/rules.zh.md'],
-    [
-      'scripts/fixtures/translation-prompt/examples/agent-note.md',
-      'scripts/fixtures/translation-prompt/examples/agent-note.zh.md',
-    ],
-  ] as const
-  const examples: TranslationExample[] = examplePaths.map(([english, chinese]) => ({
-    english: read(english),
-    chinese: read(chinese),
-  }))
+  // Synthetic reviewed examples, not live documents: editing one must not
+  // churn the prompt snapshot. Keep translated samples in memory instead of
+  // maintaining Chinese Markdown files in the repository.
+  const examples: TranslationExample[] = [
+    {
+      english: read('scripts/fixtures/translation-prompt/examples/product.md'),
+      chinese: '# Acme Agent\n\n[English](product.md) | 中文\n\nAcme Agent 是一款开源 agent harness，用于自动化仓库日常事务。\n\n本段包含供示例使用的中性占位文本。\n\n## 安装\n\n安装 Node.js 24，然后运行：\n\n```sh\nnpx acme-agent setup\n```\n\n该命令会打印设置地址，默认地址为 `http://127.0.0.1:3080`。\n\n## 社区\n\n- 在 Issue 跟踪器中报告 bug。\n- 为你的插件仓库添加 `acme-agent` 主题。\n',
+    },
+    {
+      english: read('scripts/fixtures/translation-prompt/examples/rules.md'),
+      chinese: '# Pairing Rules\n\n[English](rules.md) | 中文\n\n这些规则适用于用户请求的 Markdown 翻译。\n\n## 优先级\n\n| Level | Meaning |\n|---|---|\n| MUST | Follow required safety and structure rules. |\n| SHOULD | Deviate only when the reason is documented. |\n\n- 保留源文的每个命题。\n- 代码片段原样保留。\n',
+    },
+    {
+      english: read('scripts/fixtures/translation-prompt/examples/agent-note.md'),
+      chinese: '# Agent Note: Consistent Examples\n\n[English](agent-note.md) | 中文\n\n## 问题\n\n相似示例使用了不同的标题。\n\n## 决策\n\n相似示例使用相同的标题。\n\n## 后果\n\n示例更易于比较。\n',
+    },
+  ]
   const sourceDocument = read('scripts/fixtures/translation-prompt/snapshot-note.md')
   const recordedResponse = read('scripts/fixtures/translation-prompt/response.txt')
   const documented = documentedTranslationPromptPlaceholders(document)

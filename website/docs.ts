@@ -2,9 +2,8 @@
  * Canonical publication manifest for the documentation website.
  *
  * Markdown stays in its owning repository tier. This manifest maps each
- * canonical source into matching route trees for both site locales; when a
- * translation is absent, both routes intentionally project the available
- * source instead of copying Markdown.
+ * canonical source into matching route trees for both site locales. The
+ * repository publishes documentation in English for both route trees.
  */
 
 /** Locale key used by the VitePress site. */
@@ -56,7 +55,7 @@ interface MirroredPage {
 }
 
 type PairedPage = Omit<MirroredPage, 'source' | 'contentLocale' | 'sourceAliases'> & {
-  /** English side of a sibling `foo.md` / `foo.zh.md` pair. */
+  /** Canonical English Markdown source. */
   source: string
   /** Language-neutral repository aliases, such as the directory of an index page. */
   sourceAliases?: string[]
@@ -90,16 +89,12 @@ function mirroredPages(pages: MirroredPage[]): DocsPage[] {
 
 function pairedPages(pages: PairedPage[]): DocsPage[] {
   return mirroredPages(pages.map((page) => {
-    const chineseSource = page.source.replace(/\.md$/, '.zh.md')
     const sharedAliases = page.sourceAliases ?? []
     return {
       ...page,
-      source: { root: chineseSource, en: page.source },
-      contentLocale: { root: 'zh-CN', en: 'en-US' },
-      sourceAliases: {
-        root: [...sharedAliases, page.source],
-        en: [...sharedAliases, chineseSource],
-      },
+      source: page.source,
+      contentLocale: 'en-US',
+      sourceAliases: sharedAliases,
     }
   }))
 }

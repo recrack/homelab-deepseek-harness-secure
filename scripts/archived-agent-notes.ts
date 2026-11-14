@@ -76,12 +76,14 @@ const figmaLinkRemovals = [
 export function validateArchiveManifestExtension(
   baseline: ArchiveManifest,
   current: ArchiveManifest,
+  authorizedContentChanges: ReadonlySet<string> = new Set(),
 ): string[] {
   const errors: string[] = []
   for (const [path, expected] of Object.entries(baseline.files)) {
     const actual = current.files[path]
-    if (actual === undefined) errors.push(`${path}: sealed manifest entry is missing`)
-    else if (actual !== expected && !figmaLinkRemovals.some(change =>
+    if (actual === undefined) {
+      if (!isTranslationArtifact(path)) errors.push(`${path}: sealed manifest entry is missing`)
+    } else if (actual !== expected && !authorizedContentChanges.has(path) && !figmaLinkRemovals.some(change =>
       change.path === path && change.before === expected && change.after === actual,
     )) errors.push(`${path}: sealed manifest hash changed`)
   }
@@ -98,21 +100,10 @@ function validDate(value: string): boolean {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
 }
 
-interface Triplet {
-  source?: Buffer
-  zh?: Buffer
-  meta?: Buffer
-}
+interface ArchiveNote { source?: Buffer }
 
-function pairMeta(content: string): Map<string, string> | undefined {
-  const entries = new Map<string, string>()
-  for (const line of content.split('\n')) {
-    if (line === '' || line.startsWith('#')) continue
-    const match = /^([^:#]+\.md): ([0-9a-f]{40})$/.exec(line)
-    if (match?.[1] === undefined || match[2] === undefined) return undefined
-    entries.set(match[1], match[2])
-  }
-  return entries
+function isTranslationArtifact(path: string): boolean {
+  return path.endsWith('.zh.md') || path.endsWith('.i18n.yaml')
 }
 
 function validateMetadata(path: string, content: Buffer, sourceBase: string): { errors: string[]; date: string | undefined } {
@@ -129,14 +120,18 @@ function validateMetadata(path: string, content: Buffer, sourceBase: string): { 
   return { errors, date: archived }
 }
 
-/** Validate the closed kind tree, implemented/archive metadata, and complete bilingual triplets. */
+/** Validate the closed kind tree and implemented/archive metadata. */
 export function validateArchiveArtifacts(artifacts: ReadonlyMap<string, Buffer>): string[] {
   const errors: string[] = []
-  const triplets = new Map<string, Triplet>()
+  const notes = new Map<string, ArchiveNote>()
   for (const [path, content] of artifacts) {
-    const match = /^([^/]+)\/(\d{4}-\d{2}-\d{2}-.+?)(\.zh\.md|\.i18n\.yaml|\.md)$/.exec(path)
-    if (match?.[1] === undefined || match[2] === undefined || match[3] === undefined) {
-      errors.push(`${path}: expected {kind}/yyyy-mm-dd-topic.{md,zh.md,i18n.yaml}`)
+    if (isTranslationArtifact(path)) {
+      errors.push(`${path}: archived notes accept English Markdown files only`)
+      continue
+    }
+    const match = /^([^/]+)\/(\d{4}-\d{2}-\d{2}-.+?)\.md$/.exec(path)
+    if (match?.[1] === undefined || match[2] === undefined) {
+      errors.push(`${path}: expected {kind}/yyyy-mm-dd-topic.md`)
       continue
     }
     if (!(AGENT_NOTE_CLASSES as readonly string[]).includes(match[1])) {
@@ -144,40 +139,18 @@ export function validateArchiveArtifacts(artifacts: ReadonlyMap<string, Buffer>)
       continue
     }
     const key = `${match[1]}/${match[2]}`
-    const triplet = triplets.get(key) ?? {}
-    if (match[3] === '.md') triplet.source = content
-    else if (match[3] === '.zh.md') triplet.zh = content
-    else triplet.meta = content
-    triplets.set(key, triplet)
+    const note = notes.get(key) ?? {}
+    note.source = content
+    notes.set(key, note)
   }
 
-  for (const [key, triplet] of [...triplets].sort(([left], [right]) => left.localeCompare(right))) {
+  for (const [key, note] of [...notes].sort(([left], [right]) => left.localeCompare(right))) {
     const sourcePath = `${key}.md`
-    const zhPath = `${key}.zh.md`
-    const metaPath = `${key}.i18n.yaml`
-    const { source, zh, meta } = triplet
-    const missing = [
-      source === undefined ? sourcePath : undefined,
-      zh === undefined ? zhPath : undefined,
-      meta === undefined ? metaPath : undefined,
-    ].filter((path): path is string => path !== undefined)
-    if (source === undefined || zh === undefined || meta === undefined) {
-      errors.push(`${key}: incomplete archived triplet; missing ${missing.join(', ')}`)
-      continue
-    }
+    const { source } = note
+    if (source === undefined) throw new Error(`${sourcePath}: indexed archive note has no content`)
     const sourceBase = basename(key)
-    const { errors: sourceErrors, date: sourceDate } = validateMetadata(sourcePath, source, sourceBase)
-    const { errors: zhErrors, date: zhDate } = validateMetadata(zhPath, zh, sourceBase)
-    errors.push(...sourceErrors, ...zhErrors)
-    if (sourceDate !== undefined && zhDate !== undefined && sourceDate !== zhDate) {
-      errors.push(`${key}: English and Chinese archive dates differ (${sourceDate} vs ${zhDate})`)
-    }
-    const pair = pairMeta(meta.toString('utf8'))
-    if (pair === undefined || pair.size !== 2
-      || pair.get(`${sourceBase}.md`) !== gitBlobHash(source)
-      || pair.get(`${sourceBase}.zh.md`) !== gitBlobHash(zh)) {
-      errors.push(`${metaPath}: consistency record must contain the current Git blob hashes of both archived sides`)
-    }
+    const { errors: sourceErrors } = validateMetadata(sourcePath, source, sourceBase)
+    errors.push(...sourceErrors)
   }
   return errors
 }
@@ -186,13 +159,18 @@ export function validateArchiveArtifacts(artifacts: ReadonlyMap<string, Buffer>)
 export function extendArchiveManifest(
   existing: ArchiveManifest,
   artifacts: ReadonlyMap<string, Buffer>,
+  authorizedContentChanges: ReadonlySet<string> = new Set(),
 ): { files: Record<string, string>; added: string[]; errors: string[] } {
   const errors: string[] = []
-  const files: Record<string, string> = { ...existing.files }
+  const files: Record<string, string> = Object.fromEntries(Object.entries(existing.files).filter(([path]) => !isTranslationArtifact(path)))
   for (const [path, expected] of Object.entries(existing.files)) {
+    if (isTranslationArtifact(path)) continue
     const content = artifacts.get(path)
     if (content === undefined) errors.push(`${path}: sealed artifact is missing`)
-    else if (archiveContentHash(content) !== expected) errors.push(`${path}: sealed content hash changed`)
+    else if (archiveContentHash(content) !== expected) {
+      if (authorizedContentChanges.has(path)) files[path] = archiveContentHash(content)
+      else errors.push(`${path}: sealed content hash changed`)
+    }
   }
   const added: string[] = []
   for (const [path, content] of [...artifacts].sort(([left], [right]) => left.localeCompare(right))) {

@@ -1,7 +1,5 @@
 # Cookbook: Add a plugin feature preview
 
-English | [中文](adding-a-plugin-preview.zh.md)
-
 A feature preview is an optional illustration in a bundle's detail document, the document that its page in **Plugins** shows below the description. Follow this guide when drawing one for an official bundle. The detail document itself is declared through [`meta.detail`](adding-a-package.md#plugin-display-metadata).
 
 ## 1. Decide whether an image helps
@@ -23,7 +21,7 @@ The SVG is self-contained: no fonts, remote resources, scripts, handlers, animat
 
 ## 3. Make it the detail document
 
-Save the pair as `docs/preview.svg` and `docs/preview.zh.svg` in the bundle package, beside `docs/DETAIL.md` and `docs/DETAIL.zh.md`, and make the image the only line of each document:
+Save the pair as `docs/preview.svg` and `docs/preview.zh.svg` in the bundle package, beside `docs/DETAIL.md`, and make the English detail document contain only its preview image:
 
 ```markdown
 ![Example feature preview](preview.svg)

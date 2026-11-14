@@ -1,5 +1,5 @@
 /**
- * Pure parsing and structural helpers for the bilingual-document pairing
+ * Pure parsing and structural helpers for optional translated-document pairs
  * gate. Kept separate from the CLI so corpus discovery and signature behavior
  * can be regression-tested without reading or mutating the repository tree.
  * Also the one home of the generated-region grammar, shared by the pairing
