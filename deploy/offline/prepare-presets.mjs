@@ -5,9 +5,14 @@ import { fileURLToPath } from 'node:url';
 
 const requireInclude = createRequire(new URL('../../vendor/include/package.json', import.meta.url));
 const { parseEntryYaml, stringifyEntryYaml } = requireInclude('./lib/index.js');
+const pluginIds = new Set(['dsh-browser', 'dsh-context', 'dsh-claude-artifacts', 'dsh-claude-design', 'dsh-crew']);
 
 /** Read current shipped presets, retaining deferred Loader expressions and every other row. */
-export async function presetPatches() {
+export async function presetPatches(activePluginIds = []) {
+  if (!Array.isArray(activePluginIds) || activePluginIds.some(id => typeof id !== 'string' || !pluginIds.has(id))) {
+    throw new Error('Invalid active offline plugin ids');
+  }
+  const browserEnabled = activePluginIds.includes('dsh-browser');
   const patches = [];
   for (const id of ['standard', 'ptc', 'cordis']) {
     const source = new URL(`../../packages/bundle/web-app/presets/${id}.patch.yml`, import.meta.url);
@@ -19,15 +24,24 @@ export async function presetPatches() {
     web[0].config = { ...web[0].config, searchTimeoutMs: 370000, fetchTimeoutMs: 370000 };
     const browser = preset.config.plugins.filter(row => row.id === 'dsh-browser');
     if (browser.length > 1) throw new Error(`Expected at most one browser plugin in preset ${id}`);
-    if (browser.length === 0) {
+    if (browserEnabled && browser.length === 0) {
       preset.config.plugins.push({
         id: 'dsh-browser',
-        name: '/opt/dsh-deps/dsh-browser/lib/index.js',
+        name: '/opt/homelab-dsh-plugins/packages/dsh-browser/lib/index.js',
         config: {
           allowedOrigins: JSON.parse(process.env.DSH_BROWSER_ALLOWED_ORIGINS || '[]'),
           idleTimeoutMs: 900000,
         },
       });
+    } else if (browserEnabled) {
+      browser[0].name = '/opt/homelab-dsh-plugins/packages/dsh-browser/lib/index.js';
+      browser[0].config = {
+        ...browser[0].config,
+        allowedOrigins: JSON.parse(process.env.DSH_BROWSER_ALLOWED_ORIGINS || '[]'),
+        idleTimeoutMs: browser[0].config?.idleTimeoutMs ?? 900000,
+      };
+    } else if (browser.length === 1) {
+      preset.config.plugins = preset.config.plugins.filter(row => row.id !== 'dsh-browser');
     }
     patches.push({ id: preset.id, config: preset.config });
   }
@@ -35,5 +49,6 @@ export async function presetPatches() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  await writeFile(process.argv[2], stringifyEntryYaml(await presetPatches()), { mode: 0o600 });
+  const activePluginIds = JSON.parse(process.env.DSH_OFFLINE_ACTIVE_PLUGINS || '[]');
+  await writeFile(process.argv[2], stringifyEntryYaml(await presetPatches(activePluginIds)), { mode: 0o600 });
 }

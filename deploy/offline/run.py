@@ -19,6 +19,9 @@ from model_gateway import make_server, upstream_address
 from search_services import SearchServices
 
 
+PLUGIN_IDS = frozenset(("dsh-browser", "dsh-context", "dsh-claude-artifacts", "dsh-claude-design", "dsh-crew"))
+
+
 def docker(*args, capture=False):
     """Run Docker without a shell or automatic image downloads."""
     return subprocess.run(["docker", *args], check=True, text=True, capture_output=capture)
@@ -70,6 +73,7 @@ def main():
     parser.add_argument("--port", type=int, default=3081)
     parser.add_argument("--collector-port", type=int, default=3082)
     parser.add_argument("--approval-file", type=Path)
+    parser.add_argument("--plugin", action="append", default=[], metavar="ID", help="install and activate an optional Web plugin; repeat to select more")
     parser.add_argument("--hermes-acp-volume")
     parser.add_argument("--browser-origin", action="append", default=[], metavar="LOCAL_ORIGIN")
     parser.add_argument("--search", choices=("auto", "off"), default="auto")
@@ -85,6 +89,14 @@ def main():
         parser.error("Run as a non-root user; container applications must not retain root")
     if args.max_tokens > args.context_window:
         parser.error("Maximum output tokens must not exceed the context window")
+    if any(plugin not in PLUGIN_IDS for plugin in args.plugin):
+        parser.error("Unknown plugin id; see deploy/offline/README.md for available plugins")
+    if len(set(args.plugin)) != len(args.plugin):
+        parser.error("Each plugin id may be selected once")
+    if args.plugin and args.profile != "web":
+        parser.error("Optional plugins are available only with --profile web")
+    if args.browser_origin and "dsh-browser" not in args.plugin:
+        parser.error("--browser-origin requires --plugin dsh-browser")
     try:
         browser_origins = [browser_origin(origin) for origin in args.browser_origin]
     except ValueError as error:
@@ -109,6 +121,8 @@ def main():
     model_patch = args.model_patch.resolve(strict=True) if args.model_patch else None
     if args.hermes_acp_volume is not None and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", args.hermes_acp_volume):
         parser.error("Hermes ACP volume name is invalid")
+    if args.hermes_acp_volume is not None and (args.profile != "web" or "dsh-crew" not in args.plugin):
+        parser.error("--hermes-acp-volume requires --profile web and --plugin dsh-crew")
     if model_patch is not None and (not model_patch.is_file() or workspace not in model_patch.parents):
         parser.error("Model patch must be a file inside the workspace")
     if not workspace.is_dir() or workspace in (Path("/"), home) or workspace in home.parents:
@@ -209,6 +223,7 @@ def main():
             "DSH_CONTEXT_WINDOW": str(args.context_window),
             "DSH_MAX_TOKENS": str(args.max_tokens),
             "DSH_BROWSER_ALLOWED_ORIGINS": json.dumps([origin for origin, _, _ in browser_origins]),
+            "DSH_OFFLINE_SELECTED_PLUGINS": json.dumps(args.plugin),
         }
         if args.hermes_acp_volume is not None:
             env["DSH_HERMES_ACP_ENABLED"] = "1"
