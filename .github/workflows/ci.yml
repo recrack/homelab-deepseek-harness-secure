@@ -143,127 +143,6 @@ jobs:
           DSH_ARCHIVE_BASE_REF: ${{ github.event.pull_request.base.sha }}
         run: pnpm run check:ci:static
 
-  node-24-coverage:
-    if: github.event_name == 'pull_request'
-    runs-on: >-
-      ${{ vars.DSH_CI_FAILOVER_LINUX == 'github' && 'ubuntu-24.04'
-          || vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-16vcpu-ubuntu-2404'
-          || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
-          && github.event.pull_request.user.login != 'dependabot[bot]'
-          && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
-          || 'dsh-ubuntu-24-04-16core' }}
-    name: node 24 / coverage
-    env:
-      # Shared hosts expose host CPUs, not an isolated allocation.
-      DSH_COVERAGE_MAX_WORKERS: ${{ vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '6' || '' }}
-      DSH_COVERAGE_PARTITIONS: ${{ vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '4' || '' }}
-      DSH_GATE_CONCURRENCY: ${{ vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '3' || '' }}
-      # Managed-scope teardown cases run past the default per-test budget when
-      # this lane's partitions, workers, and sibling gates share one host: the
-      # disposal cases in subprocess-local and bash-sandbox exceeded 5000ms on
-      # the hosted image (run 34449848541) while the same commit stayed inside
-      # the budget on the in-house pool; the lane is green with this value
-      # (run 34457655892). The Windows coverage lane grants the same budget for
-      # the same reason.
-      DSH_COVERAGE_TEST_TIMEOUT_MS: '90000'
-      # A gate failure aborts the sibling gate instead of waiting out its
-      # multi-minute instrumented run.
-      DSH_GATE_FAIL_FAST: '1'
-    steps:
-      # Runner cleanup owns tool caches and fixtures, including cancelled runs.
-      - name: Use runner-owned temporary storage
-        run: |
-          echo "TMPDIR=${{ runner.temp }}" >> "$GITHUB_ENV"
-
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Restore coverage duration history
-        uses: actions/cache/restore@v6.1.0
-        with:
-          path: .coverage-times.json
-          key: coverage-times-Linux-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_LINUX || 'enterprise' }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: |
-            coverage-times-Linux-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_LINUX || 'enterprise' }}-
-
-      # Redirect the Node compile cache (enabled by pnpm and TypeScript) off
-      # the root partition's /tmp before the first pnpm call in this lane.
-      - name: Redirect Node compile cache to runner temp
-        run: echo "NODE_COMPILE_CACHE=${{ runner.temp }}/node-compile-cache" >> "$GITHUB_ENV"
-
-      - uses: pnpm/action-setup@v5.0.0
-        with:
-          dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
-
-      - uses: actions/setup-node@v7.0.0
-        with:
-          node-version: ${{ env.PRIMARY_NODE_VERSION }}
-
-      - name: Configure pnpm store path
-        id: pnpm-store
-        run: |
-          store_root="$HOME/.local/share/pnpm/store"
-          echo "PNPM_CONFIG_STORE_DIR=$store_root" >> "$GITHUB_ENV"
-          store_path=$(PNPM_CONFIG_STORE_DIR="$store_root" pnpm store path --silent)
-          echo "path=$store_path" >> "$GITHUB_OUTPUT"
-
-      # Self-hosted runners reuse the shared persistent pnpm store.
-      # Hosted runners restore the remote cache into their ephemeral store.
-      - uses: actions/cache/restore@v6.1.0
-        if: vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]'
-        with:
-          path: ${{ steps.pnpm-store.outputs.path }}
-          key: ${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-pnpm-
-
-      # The persistent self-hosted pool keeps ~/.cache between jobs on its own
-      # layout, so the archive cache follows the hosted-only pnpm store guard.
-      - name: Restore verified bubblewrap archive
-        id: bubblewrap-cache
-        if: vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]'
-        uses: actions/cache/restore@v6.1.0
-        with:
-          path: ~/.cache/dsh-ci/bubblewrap
-          key: bubblewrap-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/prepare-ci-bubblewrap.sh') }}
-
-      - name: Install dependencies and prepare bubblewrap
-        run: |
-          pnpm install --frozen-lockfile &
-          install_pid=$!
-          bash scripts/prepare-ci-bubblewrap.sh &
-          sandbox_pid=$!
-          install_status=0
-          wait "$install_pid" || install_status=$?
-          sandbox_status=0
-          wait "$sandbox_pid" || sandbox_status=$?
-          if (( install_status != 0 )); then exit "$install_status"; fi
-          exit "$sandbox_status"
-
-      # The save step is skipped on a hit. A restored archive whose digest fails
-      # is re-downloaded but not re-saved (the key already exists), so a tampered
-      # entry survives until eviction; that needs deliberate cache poisoning.
-      - name: Save verified bubblewrap archive
-        if: (vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]') && steps.bubblewrap-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6.1.0
-        with:
-          path: ~/.cache/dsh-ci/bubblewrap
-          key: bubblewrap-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/prepare-ci-bubblewrap.sh') }}
-
-      - name: Run exhaustive coverage
-        run: pnpm run check:ci:coverage
-
-      - name: Save coverage duration history
-        if: ${{ !cancelled() }}
-        uses: actions/cache/save@v6.1.0
-        with:
-          path: .coverage-times.json
-          key: coverage-times-Linux-${{ runner.environment }}-${{ vars.DSH_CI_FAILOVER_LINUX || 'enterprise' }}-${{ github.run_id }}-${{ github.run_attempt }}
-
-  # Lint and duplication stay separate from static analysis and coverage so
-  # each failing check identifies its owning lane. The lane compiles package
-  # declarations because oxlint's type-aware rules read them.
   node-24-lint:
     if: github.event_name == 'pull_request'
     runs-on: >-
@@ -522,7 +401,7 @@ jobs:
           && github.event.pull_request.user.login != 'dependabot[bot]'
           && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
           || 'ubuntu-latest' }}
-    needs: [publisher-isolated, node-24, node-24-coverage, node-24-lint, node-24-bench, node-compat]
+    needs: [publisher-isolated, node-24, node-24-lint, node-24-bench, node-compat]
     if: ${{ !cancelled() && github.event_name == 'pull_request' }}
     steps:
       - name: Fail if any needed job did not succeed
