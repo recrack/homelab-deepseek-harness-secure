@@ -133,17 +133,16 @@ jobs:
           [ "$status" -eq 0 ]
           echo "$out" | grep -qE 'Test Files[[:space:]]+1 passed \(1\)'
 
-  # The unit suite runs on ubuntu in ci.yml's Linux jobs; macos-latest is this
-  # workflow's only darwin runner, so the platform-dependent unit expectations
+  # The unit suite runs on ubuntu in ci.yml's Linux jobs; this job runs on
+  # macos-15-intel so the platform-dependent unit expectations
   # (Seatbelt path canonicalization: /tmp IS /private/tmp — sandbox semantics,
   # hence this workflow rather than ci-master.yml) take their darwin branch only
   # here. A job of its own so the seatbelt e2e leg keeps the matrix budget. The
   # budget below is a completion ceiling, not a latency target: the full suite
-  # takes 16 minutes on a fast macos-latest runner and was under half done at
-  # 20 on the slowest observed.
+  # runs on a shared hosted runner and can be delayed by worker contention.
   unit-darwin:
-    name: unit tests (darwin parity, macos-latest)
-    runs-on: macos-latest
+    name: unit tests (darwin parity, macos-15-intel)
+    runs-on: macos-15-intel
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7.0.1
@@ -157,11 +156,8 @@ jobs:
       - name: Install (immutable)
         run: pnpm install --frozen-lockfile
 
-      # The same key and value the coverage and serial lanes grant: on the
-      # shared 3-vCPU runner, cases that inherit Vitest's 5000 ms default timed
-      # out in spawn.spec.ts and changes.spec.ts (run 36370945526) while
-      # passing in under a second on a quiet host. The ci-unit aggregate is
-      # `pnpm run test` through the path that consumes the variable.
+      # Match the test timeout used by the coverage and serial lanes. The
+      # ci-unit aggregate is `pnpm run test`, which consumes this variable.
       - name: Unit tests (darwin parity)
         env:
           DSH_COVERAGE_TEST_TIMEOUT_MS: '90000'

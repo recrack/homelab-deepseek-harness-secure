@@ -645,12 +645,11 @@ describe('CI workflow', () => {
       throw new TypeError('node-24-coverage must grant DSH_COVERAGE_TEST_TIMEOUT_MS')
     }
     const unitDarwin = workflowJob(loadWorkflow('.github/workflows/sandbox.yml'), 'unit-darwin')
+    expect(unitDarwin['runs-on']).toBe('macos-15-intel')
     if (!Array.isArray(unitDarwin.steps)) throw new TypeError('unit-darwin job must define steps')
     const unit = unitDarwin.steps.filter(isRecord).find(step => step.name === 'Unit tests (darwin parity)')
-    // The whole unit inventory on a shared macos-latest runner pays the same
-    // scheduling delay the coverage lanes absorb; the ci-unit aggregate is the
-    // `pnpm run test` path that consumes the variable, and the value is the
-    // coverage lane's so the two budget classes cannot drift apart.
+    // Keep Darwin parity on the pinned Intel image and use the same test
+    // timeout as the coverage lanes; the ci-unit aggregate consumes the value.
     expect(unit).toMatchObject({
       run: 'pnpm run check:ci:unit',
       env: { DSH_COVERAGE_TEST_TIMEOUT_MS: coverage.env.DSH_COVERAGE_TEST_TIMEOUT_MS },
