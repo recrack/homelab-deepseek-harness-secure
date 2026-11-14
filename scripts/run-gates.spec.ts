@@ -488,12 +488,12 @@ describe('gate graph validation', () => {
     },
   )
 
-  it.each(['ci-primary', 'ci-static', 'check-all'] as const)(
-    'keeps weighted approval policy tests in %s',
+  it.each(['ci-primary', 'ci-static', 'check-all', 'hygiene'] as const)(
+    'omits upstream weighted approval tests from %s',
     (mode) => {
       const ids = withPnpmEntrypoint(() => gatesForMode(mode).map(subject => subject.id))
 
-      expect(ids).toContain('approval-policy')
+      expect(ids).not.toContain('approval-policy')
     },
   )
 
