@@ -15,9 +15,13 @@ case "$profile" in web|headless) ;; *) fail 'profile must be web or headless';; 
 : "${DSH_GID:?DSH_GID is required}"
 DSH_HERMES_ACP_ENABLED=${DSH_HERMES_ACP_ENABLED:-0}
 case "$DSH_HERMES_ACP_ENABLED" in 0|1) ;; *) fail 'DSH_HERMES_ACP_ENABLED must be 0 or 1';; esac
+if [ "$DSH_HERMES_ACP_ENABLED" = 1 ] && [ "$profile" != web ]; then
+    fail 'Hermes ACP requires the Web profile and dsh-crew plugin'
+fi
 DSH_WEB_PORT=${DSH_WEB_PORT:-3080}
 DSH_BROWSER_ALLOWED_ORIGINS=${DSH_BROWSER_ALLOWED_ORIGINS:-[]}
-export DSH_HERMES_ACP_ENABLED DSH_WEB_PORT DSH_BROWSER_ALLOWED_ORIGINS
+DSH_OFFLINE_SELECTED_PLUGINS=${DSH_OFFLINE_SELECTED_PLUGINS:-[]}
+export DSH_HERMES_ACP_ENABLED DSH_WEB_PORT DSH_BROWSER_ALLOWED_ORIGINS DSH_OFFLINE_SELECTED_PLUGINS
 if [ "$DSH_HERMES_ACP_ENABLED" = 1 ] && [ ! -S /run/hermes-acp/agent.sock ]; then
     fail 'the mounted Hermes ACP socket is unavailable'
 fi
@@ -174,7 +178,8 @@ exec setpriv --reuid="$DSH_UID" --regid="$DSH_GID" --clear-groups \
         python3 -c '\''from pathlib import Path; s=dict(line.split(":",1) for line in Path("/proc/self/status").read_text().splitlines() if ":" in line); assert all(int(s[k].strip(),16)==0 for k in ("CapInh","CapPrm","CapEff","CapBnd","CapAmb")); assert s["NoNewPrivs"].strip()=="1"'\''
         mkdir -p /state/home /state/tmp
         if [ "$profile" = web ]; then
-            python3 /opt/dsh/deploy/offline/profile_plugins.py
+            DSH_OFFLINE_ACTIVE_PLUGINS=$(python3 /opt/dsh/deploy/offline/profile_plugins.py)
+            export DSH_OFFLINE_ACTIVE_PLUGINS
             node /opt/dsh/deploy/offline/prepare-presets.mjs "$TMPDIR/offline-presets.patch.yml"
             set -- --patch /opt/dsh/deploy/offline/web.patch.yml \
                 --patch "$TMPDIR/offline-presets.patch.yml" "$@"

@@ -144,6 +144,7 @@ class LauncherTests(unittest.TestCase):
             with patch("sys.argv", argv), patch.object(launcher, "docker", side_effect=docker), patch.object(launcher, "make_server", return_value=server), patch.object(launcher.subprocess, "Popen", return_value=child) as launch, patch.object(launcher.subprocess, "run") as stop, patch.object(launcher.platform, "system", return_value="Linux"), patch.object(launcher.os, "getuid", return_value=1000):
                 self.assertEqual(launcher.main(), 130)
                 self.assertEqual(launch.call_args.args[0][-4:], ["headless", "--patch", str(model_patch.resolve()), "test task"])
+                self.assertIn("DSH_OFFLINE_SELECTED_PLUGINS=[]", launch.call_args.args[0])
                 self.assertEqual(len(stop.call_args_list), 2)
                 self.assertTrue(stop.call_args_list[-1].args[0][-1].endswith("-collector"))
                 collector_run = next(call for call in calls if call[:2] == ("run", "--detach"))
@@ -177,12 +178,13 @@ class LauncherTests(unittest.TestCase):
             argv = ["run.py", "--workspace", str(workspace), "--state", directory + "/state",
                     "--model", "local", "--base-url", "http://127.0.0.1:18080/v1",
                     "--approval-file", str(approval_file), "--hermes-acp-volume", "dsh-hermes-acp-socket",
-                    "--profile", "headless", "--search", "off"]
+                    "--plugin", "dsh-crew", "--profile", "web", "--search", "off"]
             with patch("sys.argv", argv), patch.object(launcher, "docker", side_effect=docker), patch.object(launcher, "make_server", return_value=server), patch.object(launcher.subprocess, "Popen", return_value=child) as launch, patch.object(launcher.subprocess, "run"), patch.object(launcher.platform, "system", return_value="Linux"), patch.object(launcher.os, "getuid", return_value=1000):
                 self.assertEqual(launcher.main(), 0)
 
             command = launch.call_args.args[0]
             self.assertIn("DSH_HERMES_ACP_ENABLED=1", command)
+            self.assertIn('DSH_OFFLINE_SELECTED_PLUGINS=["dsh-crew"]', command)
             self.assertIn("type=volume,source=dsh-hermes-acp-socket,target=/run/hermes-acp,readonly", command)
             self.assertIn(("volume", "inspect", "dsh-hermes-acp-socket"), calls)
             self.assertEqual(child.wait.call_count, 2)
@@ -219,7 +221,15 @@ class LauncherTests(unittest.TestCase):
 
 
     def test_invalid_runtime_settings_fail_before_docker(self):
-        for extra, uid in ((["--max-tokens", "262145"], 1000), ([], 0), (["--approval-file", "/tmp/control-url"], 1000)):
+        for extra, uid in (
+            (["--max-tokens", "262145"], 1000),
+            ([], 0),
+            (["--approval-file", "/tmp/control-url"], 1000),
+            (["--plugin", "unknown"], 1000),
+            (["--browser-origin", "http://192.168.1.20:8080"], 1000),
+            (["--hermes-acp-volume", "dsh-hermes"], 1000),
+            (["--plugin", "dsh-browser", "--profile", "headless"], 1000),
+        ):
             argv = ["run.py", "--workspace", "/tmp", "--state", "/tmp/state", "--model", "local",
                     "--base-url", "http://127.0.0.1:18080/v1", "--search", "off", *extra]
             with patch("sys.argv", argv), patch.object(launcher.os, "getuid", return_value=uid), patch.object(launcher, "docker") as docker, patch("sys.stderr"):

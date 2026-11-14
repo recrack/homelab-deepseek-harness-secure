@@ -12,23 +12,14 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && npm install --global pnpm@11.28.5
 
-ARG DSH_BROWSER_COMMIT=69fa75ac53c36c7f297fcce5ed2595fee62e068c
-RUN mkdir -p /opt/dsh-deps/dsh-browser \
-    && git -C /opt/dsh-deps/dsh-browser init \
-    && git -C /opt/dsh-deps/dsh-browser remote add origin https://github.com/ZSeven-W/dsh-browser.git \
-    && git -C /opt/dsh-deps/dsh-browser fetch --depth=1 origin "$DSH_BROWSER_COMMIT" \
-    && git -C /opt/dsh-deps/dsh-browser checkout --detach FETCH_HEAD \
-    && cd /opt/dsh-deps/dsh-browser \
-    && pnpm install --frozen-lockfile \
-    && pnpm run build
-
-ARG DSH_CREW_COMMIT=b00cc6d039cdecf8563b8863aa4b5404285f6e83
-RUN mkdir -p /opt/dsh-deps/dsh-crew \
-    && git -C /opt/dsh-deps/dsh-crew init \
-    && git -C /opt/dsh-deps/dsh-crew remote add origin https://github.com/ZSeven-W/dsh-crew.git \
-    && git -C /opt/dsh-deps/dsh-crew fetch --depth=1 origin "$DSH_CREW_COMMIT" \
-    && git -C /opt/dsh-deps/dsh-crew checkout --detach FETCH_HEAD \
-    && pnpm --dir /opt/dsh-deps/dsh-crew install --prod --frozen-lockfile
+ARG HOMELAB_DSH_PLUGINS_COMMIT=165a07e1f0359d0159a9baa25d774b533ec00fce
+RUN mkdir -p /opt/homelab-dsh-plugins \
+    && git -C /opt/homelab-dsh-plugins init \
+    && git -C /opt/homelab-dsh-plugins remote add origin https://github.com/recrack/homelab-dsh-plugins.git \
+    && git -C /opt/homelab-dsh-plugins fetch --depth=1 origin "$HOMELAB_DSH_PLUGINS_COMMIT" \
+    && git -C /opt/homelab-dsh-plugins checkout --detach FETCH_HEAD \
+    && /opt/homelab-dsh-plugins/scripts/build.sh \
+    && chmod -R a+rX /opt/homelab-dsh-plugins
 
 WORKDIR /opt/dsh
 COPY . .
@@ -37,12 +28,12 @@ ENV DSH_CLIENT_COMMIT_HASH=$DSH_CLIENT_COMMIT_HASH
 RUN pnpm install --frozen-lockfile --ignore-scripts \
     && pnpm exec tsx native/system/scripts/build.ts \
     && pnpm rebuild esbuild node-pty koffi \
-    && npm install --prefix deploy/offline/plugins/dsh-context --omit=dev --ignore-scripts --legacy-peer-deps --no-package-lock \
     && mkdir -p node_modules/@zseven-w \
-    && ln -s ../deploy/offline/plugins/dsh-context node_modules/dsh-context \
-    && ln -s ../deploy/offline/plugins/dsh-claude-artifacts node_modules/dsh-claude-artifacts \
-    && ln -s ../deploy/offline/plugins/dsh-claude-design node_modules/dsh-claude-design \
-    && ln -s /opt/dsh-deps/dsh-crew node_modules/@zseven-w/dsh-crew \
+    && ln -s /opt/homelab-dsh-plugins/packages/dsh-browser node_modules/@zseven-w/dsh-browser \
+    && ln -s /opt/homelab-dsh-plugins/packages/dsh-context node_modules/dsh-context \
+    && ln -s /opt/homelab-dsh-plugins/packages/dsh-claude-artifacts node_modules/dsh-claude-artifacts \
+    && ln -s /opt/homelab-dsh-plugins/packages/dsh-claude-design node_modules/dsh-claude-design \
+    && ln -s /opt/homelab-dsh-plugins/packages/dsh-crew node_modules/@zseven-w/dsh-crew \
     && DSH_GATE_CONCURRENCY=2 pnpm run build:artifacts \
     && DSH_GATE_CONCURRENCY=2 pnpm run build:check \
     && chmod -R a+rX deploy/offline \

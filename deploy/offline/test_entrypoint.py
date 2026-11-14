@@ -33,12 +33,12 @@ elif [ "$1" = -S ]; then
 printf '%s\\n' '-P OUTPUT DROP' '-A OUTPUT -o lo -j ACCEPT'
 fi''')
             stub("getent", "exit 0")
-            stub("python3", 'if [ "$1" = - ] && [ -n "${GATEWAY_IP:-}" ]; then script=$(cat); case "$script" in *"from urllib.parse import urlsplit"*) printf "%s\\n" "$script" | "' + sys.executable + '" -;; *) echo 172.30.0.2;; esac; elif [ "$1" = -c ]; then case "$2" in *CapInh*) exit 0;; esac; exec "' + sys.executable + '" "$@"; elif [ "$1" = "$MOCK_PROFILE_INSTALLER" ]; then printf called > "$MOCK_PLUGIN_INSTALL"; else exec "' + sys.executable + '" "$@"; fi')
+            stub("python3", 'if [ "$1" = - ] && [ -n "${GATEWAY_IP:-}" ]; then script=$(cat); case "$script" in *"from urllib.parse import urlsplit"*) printf "%s\\n" "$script" | "' + sys.executable + '" -;; *) echo 172.30.0.2;; esac; elif [ "$1" = -c ]; then case "$2" in *CapInh*) exit 0;; esac; exec "' + sys.executable + '" "$@"; elif [ "$1" = "$MOCK_PROFILE_INSTALLER" ]; then printf called > "$MOCK_PLUGIN_INSTALL"; printf "%s\\n" "${DSH_OFFLINE_SELECTED_PLUGINS:-[]}"; else exec "' + sys.executable + '" "$@"; fi')
             stub("setpriv", '''printf "%s\\n" "$@" > "$MOCK_DROP"
 printf "%s\\n" "$DSH_WEB_HOST" > "$MOCK_WEB_HOST"
 while [ "$#" -gt 0 ]; do case "$1" in --*) shift;; *) break;; esac; done
 exec "$@"''')
-            stub("node", 'printf "%s\\n" "$@" > "$MOCK_NODE_ARGS"; printf "%s\\n" "$DSH_LOCAL_MODEL_KEY" > "$MOCK_KEY"; printf "%s\\n" "${DSH_COLLECTOR_URL:-}" > "$MOCK_COLLECTOR_URL"')
+            stub("node", 'printf "%s\\n" "$@" > "$MOCK_NODE_ARGS"; printf "%s\\n" "$DSH_LOCAL_MODEL_KEY" > "$MOCK_KEY"; printf "%s\\n" "${DSH_COLLECTOR_URL:-}" > "$MOCK_COLLECTOR_URL"; printf "%s\\n" "${DSH_OFFLINE_ACTIVE_PLUGINS:-}" > "$MOCK_ACTIVE_PLUGINS"')
             source = Path(__file__).with_name("entrypoint.sh").read_text()
             profile_installer = root / "profile_plugins.py"
             profile_installer.write_text("# entrypoint test stub\n")
@@ -65,12 +65,14 @@ exec "$@"''')
                 "MOCK_NODE_ARGS": str(root / "node-args"),
                 "MOCK_KEY": str(root / "key"),
                 "MOCK_COLLECTOR_URL": str(root / "collector-url"),
+                "MOCK_ACTIVE_PLUGINS": str(root / "active-plugins"),
                 "MOCK_PROFILE_INSTALLER": str(profile_installer),
                 "MOCK_PLUGIN_INSTALL": str(root / "plugin-install"),
                 "DSH_COLLECTOR_HOST": "",
                 "DSH_HERMES_ACP_ENABLED": "0",
                 "DSH_WEB_PORT": "3080",
                 "DSH_BROWSER_ALLOWED_ORIGINS": "[]",
+                "DSH_OFFLINE_SELECTED_PLUGINS": "[]",
             }
 
             def run(overrides, profile="headless"):
@@ -99,6 +101,7 @@ exec "$@"''')
             result = run({}, "web")
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual((root / "plugin-install").read_text(), "called")
+            self.assertEqual((root / "active-plugins").read_text().strip(), "[]")
             args = (root / "node-args").read_text().splitlines()
             self.assertEqual(args[-5:], ["--patch", "/opt/dsh/deploy/offline/web.patch.yml", "--patch", temporary + "/state/tmp/offline-presets.patch.yml", "test task"])
             self.assertEqual(args.count("--patch"), 3)
@@ -114,7 +117,7 @@ exec "$@"''')
             self.assertIn(":INPUT DROP", (root / "rules6").read_text())
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as hermes_socket:
                 hermes_socket.bind(str(socket_path))
-                result = run({"DSH_HERMES_ACP_ENABLED": "1"})
+                result = run({"DSH_HERMES_ACP_ENABLED": "1", "DSH_OFFLINE_SELECTED_PLUGINS": '["dsh-crew"]'}, "web")
             socket_path.unlink()
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("/opt/dsh/deploy/offline/hermes.patch.yml", (root / "node-args").read_text())

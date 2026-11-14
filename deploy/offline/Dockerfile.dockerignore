@@ -49,5 +49,3 @@
 **/.DS_Store
 **/__pycache__
 **/.venv
-!deploy/offline/plugins/**/lib
-!deploy/offline/plugins/**/lib/**

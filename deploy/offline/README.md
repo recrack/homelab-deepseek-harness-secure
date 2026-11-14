@@ -1,12 +1,10 @@
 # Local model with controlled web access
 
-English | [中文](README.zh.md)
-
 This deployment runs DeepSeek Harness in a Docker container on macOS or Linux. The agent sends model requests only to the private OpenAI-compatible server selected by `--base-url`; the DSH process has no direct public network route. A separate collector handles explicitly approved web requests.
 
 ## Build and run
 
-Build the DSH image from the repository root. The first automatic search start can clone and build pinned search engine sources; the launcher never pulls the DSH image.
+Build the DSH image from the repository root. The image build fetches the pinned `homelab-dsh-plugins` commit and builds its packages; the first automatic search start can also clone and build pinned search engine sources. The launcher never pulls the DSH image or clones plugins at runtime.
 
 ```sh
 docker build --build-arg DSH_CLIENT_COMMIT_HASH=$(git rev-parse HEAD) -f deploy/offline/Dockerfile -t dsh-offline:local .
@@ -21,21 +19,31 @@ The UI is available at `http://127.0.0.1:3081`. The launcher prints an approval 
 
 `--profile headless` disables the UI. `--port`, `--collector-port`, `--context-window`, and `--max-tokens` configure local listeners and model limits. `--model-patch` accepts a trusted Cordis overlay inside the workspace; it can change plugin and browser policy settings, while the container firewall remains fixed.
 
-The pinned `dsh-browser` plugin is available in the Web presets. Its navigation allowlist and the container firewall allow no browser destinations by default. Add one exact loopback or private IPv4 origin for a local page, repeating the option for additional origins:
+Optional plugins come from [homelab-dsh-plugins](https://github.com/recrack/homelab-dsh-plugins). Choose plugin IDs explicitly; the first selection installs them into the persistent Web profile, and those selections remain active on later launches. For example:
 
 ```sh
-python3 deploy/offline/run.py --workspace /absolute/project --state /absolute/private-dsh-state --model MODEL_ID --base-url http://127.0.0.1:18080/v1 --browser-origin http://127.0.0.1:4173
+python3 deploy/offline/run.py --workspace /absolute/project --state /absolute/private-dsh-state --model MODEL_ID --base-url http://127.0.0.1:18080/v1 --plugin dsh-context --plugin dsh-claude-artifacts --plugin dsh-claude-design --plugin dsh-crew
+```
+
+Available IDs are `dsh-browser`, `dsh-context`, `dsh-claude-artifacts`, `dsh-claude-design`, and `dsh-crew`. No optional plugin is activated for a new state directory unless selected. Existing profile selections stay installed. DSH Crew requires the Web profile and running local DSH hub; its worker providers use the selected local model, while vision and image generation remain disabled.
+
+The `dsh-browser` plugin starts with an empty navigation allowlist. To allow one exact loopback or private IPv4 origin, select the plugin and repeat `--browser-origin` for each origin:
+
+```sh
+python3 deploy/offline/run.py --workspace /absolute/project --state /absolute/private-dsh-state --model MODEL_ID --base-url http://127.0.0.1:18080/v1 --plugin dsh-browser --browser-origin http://127.0.0.1:4173
 ```
 
 Loopback addresses refer to the DSH container. A browser page can still request its subresources, but the firewall permits only the configured addresses and ports. Use the approved Web collector for public websites.
 
 ## Installed DSH plugins
 
-The first Web launch adds `dsh-context`, `dsh-claude-artifacts`, `dsh-claude-design`, and `@zseven-w/dsh-crew` to the persistent Web profile. The copied packages and their licenses are under `deploy/offline/plugins`; the deployment does not depend on `/home/pigma/dsh-private-validation` after the image is built.
+The secure image fetches plugin packages from the pinned commit in `homelab-dsh-plugins` at build time. It does not contact that repository when DSH starts. `--plugin <id>` installs and activates only the requested package; repeating the flag selects multiple packages. The launcher records these packages in the persistent Web profile and keeps them installed on later launches.
 
 The `dsh-context` snapshot keeps its context panels and blocks its automatic catalog, balance, and recommendation requests. The Baoyu plugins provide the local Artifacts page and design canvas. DSH Crew requires the running DSH hub and uses the selected local model for both worker tiers; it cannot fall back to a standalone DeepSeek runtime. The multimodal vision and image-generation providers are disabled.
 
 When `--hermes-acp-volume` is supplied, DSH Crew routes both worker tiers through the Hermes + Qwen agent preset. Without that volume, workers use the local DSH model. The launcher keeps the existing profile patch and other bundle selections when it adds these bundles.
+
+For standard DSH plugin development, see [your first plugin](../../docs/user/develop/basic/index.md) and [package and install a plugin](../../docs/user/develop/basic/publish.md). A search or fetch backend can extend `dsh-web` by registering a provider; see [add another provider](../../packages/web/web/README.md#adding-a-provider). This offline deployment disables Plugin Manager; `deploy/offline/profile_plugins.py` installs only explicitly selected catalog entries.
 
 ## Local search
 
@@ -55,6 +63,14 @@ Manually configured engines must listen on private IPv4 addresses and expose the
 
 The collector can also fetch a public HTTP(S) URL after explicit approval. DeepSeek root and subdomains, including `api.deepseek.com`, are rejected before approval or DNS. The collector has no public-search fallback. The temporary search Docker network contains only the selected search services and is removed at exit.
 
+## Research with DSH
+
+Open the Web UI and ask for current, source-backed information. DSH sends each `web_search` query through the collector, which displays the exact query for approval before forwarding it to the local search engines. Each public `web_fetch` request also waits for approval. Ask DSH to prefer primary sources, compare independent sources, state publication dates and uncertainty, and cite source URLs. For example:
+
+> Research [question]. Find primary sources, fetch relevant pages after approval, compare claims across independent sources, and cite every factual claim. Separate confirmed facts from inference and include publication dates.
+
+The configured public search providers can see approved queries and the search engine's public IP. Keep secrets and private project data out of search queries. The collector does not send conversation history, files, or credentials to search engines or fetched websites.
+
 ## Hermes ACP
 
 Hermes is an optional ACP subagent backend, not the DSH model provider. DSH continues to use the selected local model for coordination; the `Hermes + Qwen` preset delegates coding work to the existing Hermes sidecar over a named Unix-socket volume.
@@ -62,10 +78,10 @@ Hermes is an optional ACP subagent backend, not the DSH model provider. DSH cont
 Start the validated Hermes sidecar first, then pass its existing Docker volume to the launcher:
 
 ```sh
-python3 deploy/offline/run.py --workspace /absolute/project --state /absolute/private-dsh-state --model MODEL_ID --base-url http://127.0.0.1:18080/v1 --hermes-acp-volume dsh-hermes-acp-socket
+python3 deploy/offline/run.py --workspace /absolute/project --state /absolute/private-dsh-state --model MODEL_ID --base-url http://127.0.0.1:18080/v1 --plugin dsh-crew --hermes-acp-volume dsh-hermes-acp-socket
 ```
 
-The volume is mounted read-only at `/run/hermes-acp`. The socket must already exist and be connectable by the host user's numeric UID; the validated sidecar creates it for UID 1000. DSH Crew selects the `Hermes + Qwen` preset for both worker tiers when the volume is present. Its coordinator can read project files and delegate, but cannot directly write files, run commands, or install tools. The sidecar must use a local model endpoint and keep its own telemetry and public egress policy disabled; the launcher cannot enforce network policy inside a separately managed sidecar.
+The volume is mounted read-only at `/run/hermes-acp`. The socket must already exist and be connectable by the host user's numeric UID; the validated sidecar creates it for UID 1000. Select `dsh-crew` on each launch that uses the volume. DSH Crew selects the `Hermes + Qwen` preset for both worker tiers; its coordinator can read project files and delegate, but cannot directly write files, run commands, or install tools. The sidecar must use a local model endpoint and keep its own telemetry and public egress policy disabled; the launcher cannot enforce network policy inside a separately managed sidecar.
 
 ## Network and data handling
 

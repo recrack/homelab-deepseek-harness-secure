@@ -1,34 +1,53 @@
-"""Tests for the persistent offline Web profile setup."""
+"""Tests for explicit and persistent offline Web plugin selection."""
 import json
 from pathlib import Path
 import tempfile
 import unittest
 
-from profile_plugins import PLUGIN_BUNDLES, PLUGIN_DEPENDENCIES, install_profile
+from profile_plugins import PLUGIN_DEPENDENCIES, PLUGIN_PACKAGES, install_profile, selected_plugin_ids
 
 
 class ProfilePluginsTests(unittest.TestCase):
+    """Keep plugin selection local to the requested persistent profile."""
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         self.dsh_home = self.root / ".dsh"
         self.home = self.root / "home"
-        self.plugin_roots = {name: self.root / "bundled" / name for name in PLUGIN_BUNDLES}
+        self.plugin_roots = {
+            package: self.root / "bundled" / package.rsplit("/", 1)[-1]
+            for package in PLUGIN_PACKAGES.values()
+        }
         for path in self.plugin_roots.values():
             path.mkdir(parents=True)
 
     def tearDown(self):
         self.temporary.cleanup()
 
-    def test_installs_plugin_bundles_and_local_crew_defaults(self):
-        install_profile(self.dsh_home, self.home, "qwen-local", False, self.plugin_roots)
+    def test_no_optional_plugin_is_installed_by_default(self):
+        active = install_profile(self.dsh_home, self.home, "qwen-local", False, plugin_roots=self.plugin_roots)
 
         profile = json.loads((self.dsh_home / "profiles/web/package.json").read_text())
-        self.assertEqual(profile["dsh"]["profile"]["bundles"][:2], ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"])
-        self.assertEqual(profile["dsh"]["profile"]["bundles"][2:], list(PLUGIN_BUNDLES))
+        self.assertEqual(active, [])
+        self.assertEqual(profile["dsh"]["profile"]["bundles"], ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"])
+        self.assertEqual(profile["dependencies"], {})
+        self.assertFalse((self.dsh_home / "profiles/web/node_modules").exists())
+        self.assertFalse((self.home / ".config/dsh-crew/config.json").exists())
+
+    def test_selected_plugins_install_once_and_configure_crew_safely(self):
+        selected = list(PLUGIN_PACKAGES)
+        active = install_profile(self.dsh_home, self.home, "qwen-local", True, selected, self.plugin_roots)
+
+        profile = json.loads((self.dsh_home / "profiles/web/package.json").read_text())
+        self.assertEqual(active, selected)
+        self.assertEqual(
+            profile["dsh"]["profile"]["bundles"],
+            ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-context", "dsh-claude-artifacts", "dsh-claude-design", "@zseven-w/dsh-crew"],
+        )
         self.assertEqual(profile["dependencies"], PLUGIN_DEPENDENCIES)
-        for name, target in self.plugin_roots.items():
-            link = self.dsh_home / "profiles/web/node_modules" / name
+        for package, target in self.plugin_roots.items():
+            link = self.dsh_home / "profiles/web/node_modules" / package
             self.assertTrue(link.is_symlink())
             self.assertEqual(link.resolve(), target.resolve())
         crew = json.loads((self.home / ".config/dsh-crew/config.json").read_text())
@@ -37,9 +56,9 @@ class ProfilePluginsTests(unittest.TestCase):
         self.assertEqual(crew["flash_model"], "qwen-local")
         self.assertEqual(crew["vision_provider"], "off")
         self.assertEqual(crew["imagegen_provider"], "off")
-        self.assertEqual(crew["preset_flash"], "default")
+        self.assertEqual(crew["preset_flash"], "hermes-qwen")
 
-    def test_preserves_profile_layers_and_crew_preferences(self):
+    def test_selected_plugins_remain_active_and_custom_profile_data_survives(self):
         profile_dir = self.dsh_home / "profiles/web"
         profile_dir.mkdir(parents=True)
         (profile_dir / "package.json").write_text(json.dumps({
@@ -53,10 +72,12 @@ class ProfilePluginsTests(unittest.TestCase):
         config_path.parent.mkdir(parents=True)
         config_path.write_text(json.dumps({"locale": "ko", "custom_providers": [{"id": "local"}]}))
 
-        install_profile(self.dsh_home, self.home, "qwen-local", True, self.plugin_roots)
-        install_profile(self.dsh_home, self.home, "qwen-local", True, self.plugin_roots)
+        selected = install_profile(self.dsh_home, self.home, "qwen-local", True, ("dsh-context", "dsh-crew"), self.plugin_roots)
+        persisted = install_profile(self.dsh_home, self.home, "qwen-local", False, plugin_roots=self.plugin_roots)
 
         profile = json.loads((profile_dir / "package.json").read_text())
+        self.assertEqual(selected, ["dsh-context", "dsh-crew"])
+        self.assertEqual(persisted, selected)
         self.assertEqual(profile["name"], "custom-web")
         self.assertEqual(profile["dependencies"]["existing-plugin"], "1.0.0")
         self.assertIn("custom-bundle", profile["dsh"]["profile"]["bundles"])
@@ -66,18 +87,53 @@ class ProfilePluginsTests(unittest.TestCase):
         self.assertEqual(crew["locale"], "ko")
         self.assertEqual(crew["custom_providers"], [{"id": "local"}])
         self.assertEqual(crew["mode"], "hub")
-        self.assertEqual(crew["preset_flash"], "hermes-qwen")
-        self.assertEqual(crew["preset_pro"], "hermes-qwen")
+        self.assertEqual(crew["preset_flash"], "default")
+
+    def test_migrates_legacy_plugin_paths_without_dropping_bundles(self):
+        profile_dir = self.dsh_home / "profiles/web"
+        profile_dir.mkdir(parents=True)
+        (profile_dir / "package.json").write_text(json.dumps({
+            "dependencies": {"dsh-context": "file:/opt/dsh/deploy/offline/plugins/dsh-context"},
+            "dsh": {"profile": {"bundles": ["dsh-context"]}},
+        }))
+
+        active = install_profile(self.dsh_home, self.home, "qwen-local", False, plugin_roots=self.plugin_roots)
+
+        profile = json.loads((profile_dir / "package.json").read_text())
+        self.assertEqual(active, ["dsh-context"])
+        self.assertEqual(profile["dependencies"]["dsh-context"], PLUGIN_DEPENDENCIES["dsh-context"])
+        self.assertIn("dsh-context", profile["dsh"]["profile"]["bundles"])
+
+    def test_design_selection_installs_its_artifacts_dependency_without_activating_its_bundle(self):
+        active = install_profile(self.dsh_home, self.home, "qwen-local", False, ("dsh-claude-design",), self.plugin_roots)
+
+        profile = json.loads((self.dsh_home / "profiles/web/package.json").read_text())
+        bundles = profile["dsh"]["profile"]["bundles"]
+        self.assertEqual(active, ["dsh-claude-design"])
+        self.assertIn("dsh-claude-design", bundles)
+        self.assertNotIn("dsh-claude-artifacts", bundles)
+        self.assertEqual(profile["dependencies"]["dsh-claude-artifacts"], PLUGIN_DEPENDENCIES["dsh-claude-artifacts"])
+        self.assertTrue((self.dsh_home / "profiles/web/node_modules/dsh-claude-artifacts").is_symlink())
+
+    def test_refuses_hermes_without_an_active_crew_plugin(self):
+        with self.assertRaisesRegex(ValueError, "Hermes ACP requires the dsh-crew plugin"):
+            install_profile(self.dsh_home, self.home, "qwen-local", True, plugin_roots=self.plugin_roots)
 
     def test_refuses_to_replace_a_non_symlink_plugin_path(self):
         link = self.dsh_home / "profiles/web/node_modules/dsh-context"
         link.mkdir(parents=True)
 
         with self.assertRaisesRegex(ValueError, "occupied by a non-symlink for dsh-context"):
-            install_profile(self.dsh_home, self.home, "qwen-local", False, self.plugin_roots)
+            install_profile(self.dsh_home, self.home, "qwen-local", False, ("dsh-context",), self.plugin_roots)
 
         self.assertTrue(link.is_dir())
         self.assertFalse(link.is_symlink())
+
+    def test_validates_the_host_plugin_selection(self):
+        self.assertEqual(selected_plugin_ids('["dsh-browser"]'), ["dsh-browser"])
+        for invalid in ("{}", '["unknown"]', '["dsh-browser","dsh-browser"]', "[1]"):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                selected_plugin_ids(invalid)
 
 
 if __name__ == "__main__":
