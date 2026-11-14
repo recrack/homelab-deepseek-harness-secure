@@ -2,6 +2,20 @@
 
 This deployment runs DeepSeek Harness in a Docker container on macOS or Linux. The agent sends model requests only to the private OpenAI-compatible server selected by `--base-url`; the DSH process has no direct public network route. A separate collector handles explicitly approved web requests.
 
+## Architecture and technology stack
+
+The deployment separates host orchestration, the DSH agent, approved public retrieval, and local search. Each component has a separate network role; [Network and data handling](#network-and-data-handling) describes the permitted traffic.
+
+| Component | Stack | Responsibility |
+| --- | --- | --- |
+| Host launcher | Python 3 standard library and Docker CLI | Validates local paths and the private model endpoint, starts the model relay, creates per-run networks, launches containers, and cleans up managed resources. |
+| DSH image | Node.js 24 on Debian Bookworm, pnpm 11.28.5, the TypeScript/ESM DSH workspace | Builds the agent runtime and loads its Web or headless Cordis profile. |
+| Network enforcement | Linux `iptables`, `ip6tables`, and `setpriv` | Installs default-deny rules before loading DSH, blocks Docker DNS, then drops Linux capabilities for the agent process. |
+| Approved retrieval | Separate container using Node.js ESM, the Cordis `public-web` profile, and `dsh-web-fetch-http` | Holds a bounded search or fetch request until local approval. It has no workspace or Session mount. |
+| Local search | [SearXNG](https://github.com/searxng/searxng) (Python) and [RustXNG](https://github.com/sahenjp/RustXNG) (Rust) | Builds pinned source commits when an engine is missing; otherwise reuses only containers with reviewed image digests. Both engines receive approved queries over a private Docker network. |
+
+The host launcher is Python. The agent and collector run in separate containers from the same Node.js image. Only the agent container receives the project workspace and persistent state. The optional Hermes ACP process remains a separately managed service.
+
 ## Build and run
 
 Build the DSH image from the repository root. The image build fetches the pinned `homelab-dsh-plugins` commit and builds its packages; the first automatic search start can also clone and build pinned search engine sources. The launcher never pulls the DSH image or clones plugins at runtime.
@@ -35,11 +49,13 @@ python3 deploy/offline/run.py --workspace /absolute/project --state /absolute/pr
 
 Loopback addresses refer to the DSH container. A browser page can still request its subresources, but the firewall permits only the configured addresses and ports. Use the approved Web collector for public websites.
 
-## Installed DSH plugins
+## Plugin architecture and installed plugins
 
-The secure image fetches plugin packages from the pinned commit in `homelab-dsh-plugins` at build time. It does not contact that repository when DSH starts. `--plugin <id>` installs and activates only the requested package; repeating the flag selects multiple packages. The launcher records these packages in the persistent Web profile and keeps them installed on later launches.
+The Docker build fetches the pinned `homelab-dsh-plugins` commit and runs its `scripts/build.sh`; the image does not clone the repository when DSH starts. The built Node.js plugin packages are linked into the image. At launch, `--plugin <id>` selects from the fixed ID-to-package map in `deploy/offline/profile_plugins.py`. That helper records selected DSH bundles and local `file:` dependencies in the persistent Web profile, then links the package directories into its `node_modules`. A new state directory enables no optional plugin, and later launches keep existing selections.
 
-The `dsh-context` snapshot keeps its context panels and blocks its automatic catalog, balance, and recommendation requests. The Baoyu plugins provide the local Artifacts page and design canvas. DSH Crew requires the running DSH hub and uses the selected local model for both worker tiers; it cannot fall back to a standalone DeepSeek runtime. The multimodal vision and image-generation providers are disabled.
+The Web profile composes Cordis bundles and plugin entries. `dsh-context`, `dsh-claude-artifacts`, `dsh-claude-design`, and `dsh-crew` are bundles that contribute Cordis patches; `dsh-browser` is inserted as a plugin entry in the shipped presets when selected. The deployment security overlay and Linux firewall remain in force regardless of which package is selected. Selecting a plugin does not add public network access; browser destinations still require an exact `--browser-origin` allowlist entry.
+
+The available IDs are `dsh-browser`, `dsh-context`, `dsh-claude-artifacts`, `dsh-claude-design`, and `dsh-crew`. The pinned `dsh-context` package keeps its context panels and blocks its automatic catalog, balance, and recommendation requests. `dsh-claude-artifacts` supplies the local Artifacts page used by `dsh-claude-design`; the design plugin's upstream project is [Open Artifacts](https://github.com/JimLiu/open-artifacts), formerly Baoyu Design. This image still uses the version pinned in `homelab-dsh-plugins`, so upstream releases do not alter it until that catalog pin is deliberately updated and the image rebuilt. DSH Crew requires the running DSH hub and uses the selected local model for both worker tiers; it cannot fall back to a standalone DeepSeek runtime. The multimodal vision and image-generation providers are disabled.
 
 When `--hermes-acp-volume` is supplied, DSH Crew routes both worker tiers through the Hermes + Qwen agent preset. Without that volume, workers use the local DSH model. The launcher keeps the existing profile patch and other bundle selections when it adds these bundles.
 

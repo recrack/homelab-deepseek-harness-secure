@@ -2,6 +2,20 @@
 
 이 배포는 macOS 또는 Linux에서 DeepSeek Harness를 Docker 컨테이너로 실행합니다. DSH 프로세스는 선택한 비공개 모델 서버에만 모델 요청을 보내며, 공개 인터넷으로 직접 나가는 경로가 없습니다. 웹 검색과 페이지 가져오기는 별도 수집기가 사용자의 승인을 받은 뒤 처리합니다.
 
+## 아키텍처와 기술 스택
+
+배포 구성은 호스트 실행기, DSH 에이전트, 승인된 공개 데이터 수집기, 로컬 검색 엔진으로 나뉩니다. 각 구성 요소의 네트워크 권한은 [데이터 흐름과 네트워크](#데이터-흐름과-네트워크)에서 설명합니다.
+
+| 구성 요소 | 스택 | 역할 |
+| --- | --- | --- |
+| 호스트 실행기 | Python 3 표준 라이브러리와 Docker CLI | 로컬 경로와 비공개 모델 endpoint를 확인하고, 모델 릴레이와 실행별 네트워크를 만들며, 컨테이너를 실행하고 관리 리소스를 정리합니다. |
+| DSH 이미지 | Debian Bookworm 기반 Node.js 24, pnpm 11.28.5, TypeScript/ESM DSH 워크스페이스 | 에이전트 런타임을 빌드하고 Web 또는 headless Cordis 프로필을 불러옵니다. |
+| 네트워크 제한 | Linux `iptables`, `ip6tables`, `setpriv` | DSH 코드를 불러오기 전에 기본 거부 규칙을 설치하고 Docker DNS를 차단한 뒤 에이전트 프로세스의 Linux capability를 제거합니다. |
+| 승인 수집기 | 별도 컨테이너, Node.js ESM, Cordis `public-web` 프로필, `dsh-web-fetch-http` | 제한된 검색어나 가져오기 요청을 로컬 승인 전까지 대기시킵니다. 작업공간이나 Session 디렉터리는 마운트하지 않습니다. |
+| 로컬 검색 | 컨테이너로 실행하는 [SearXNG](https://github.com/searxng/searxng)(Python)와 [RustXNG](https://github.com/sahenjp/RustXNG)(Rust) | 엔진이 없으면 고정한 소스 커밋을 빌드하고, 있으면 검토한 이미지 digest와 일치하는 컨테이너만 재사용합니다. 두 엔진은 사설 Docker 네트워크에서 승인된 검색어를 받습니다. |
+
+호스트 실행기는 Python으로 동작합니다. 에이전트와 수집기는 동일한 Node.js 이미지에서 별도 컨테이너로 실행합니다. 프로젝트 작업공간과 영속 상태는 에이전트 컨테이너에만 마운트합니다. 선택 가능한 Hermes ACP 프로세스는 별도로 관리합니다.
+
 ## 빌드와 실행
 
 저장소 루트에서 DSH 이미지를 빌드합니다. 빌드 시 `homelab-dsh-plugins` 저장소의 고정 커밋을 가져와 플러그인 패키지를 준비합니다. 검색 서비스를 처음 자동 실행할 때도 고정한 SearXNG와 RustXNG 소스를 가져와 빌드할 수 있습니다. 실행기는 DSH 이미지나 플러그인을 실행 중에 내려받지 않습니다.
@@ -27,7 +41,7 @@ UI는 `http://127.0.0.1:3081`에서 열립니다. 실행기는 제어 터미널�
 python3 deploy/offline/run.py --workspace /absolute/project --state /absolute/private-dsh-state --model MODEL_ID --base-url http://127.0.0.1:18080/v1 --plugin dsh-context --plugin dsh-claude-artifacts --plugin dsh-claude-design --plugin dsh-crew
 ```
 
-사용 가능한 ID는 `dsh-browser`, `dsh-context`, `dsh-claude-artifacts`, `dsh-claude-design`, `dsh-crew`입니다. `dsh-context`의 고정본은 자동 카탈로그, 잔액, 추천 요청을 차단합니다. Baoyu 플러그인은 로컬 Artifacts 페이지와 디자인 캔버스를 제공합니다. DSH Crew는 실행 중인 DSH 허브를 사용하고 두 작업자 계층에 선택한 로컬 모델을 적용합니다. 비전과 이미지 생성 제공자는 꺼져 있습니다.
+사용 가능한 ID는 `dsh-browser`, `dsh-context`, `dsh-claude-artifacts`, `dsh-claude-design`, `dsh-crew`입니다. `dsh-context`의 고정본은 자동 카탈로그, 잔액, 추천 요청을 차단합니다. `dsh-claude-artifacts`와 `dsh-claude-design`은 로컬 Artifacts 페이지와 디자인 캔버스를 제공합니다. 디자인 플러그인의 upstream 프로젝트는 이전 Baoyu Design에서 이름이 바뀐 [Open Artifacts](https://github.com/JimLiu/open-artifacts)입니다. 이 이미지는 `homelab-dsh-plugins`에 고정된 버전을 사용하므로 카탈로그 고정을 갱신하고 이미지를 다시 빌드하기 전까지 upstream 변경은 반영되지 않습니다. DSH Crew는 실행 중인 DSH 허브를 사용하고 두 작업자 계층에 선택한 로컬 모델을 적용합니다. 비전과 이미지 생성 제공자는 꺼져 있습니다.
 
 `dsh-browser`는 기본적으로 탐색 대상이 없습니다. 로컬 페이지를 허용하려면 매 실행마다 `dsh-browser`를 고르고 정확한 루프백 또는 사설 IPv4 origin을 지정합니다. origin을 여러 개 허용할 때는 옵션을 반복합니다.
 
@@ -38,6 +52,12 @@ python3 deploy/offline/run.py --workspace /absolute/project --state /absolute/pr
 루프백 주소는 DSH 컨테이너를 가리킵니다. 브라우저 페이지가 하위 리소스를 요청할 수 있지만 방화벽은 지정한 주소와 포트만 허용합니다. 공개 웹사이트는 승인된 Web 수집기를 사용하세요.
 
 일반 DSH 플러그인 개발은 [첫 플러그인 만들기](../../docs/user/develop/basic/index.md)와 [플러그인 패키징 및 설치](../../docs/user/develop/basic/publish.md)를 참고하세요. 검색 또는 가져오기 백엔드는 [dsh-web provider 추가](../../packages/web/web/README.md#adding-a-provider) 방식으로 확장할 수 있습니다. 이 배포는 Plugin Manager를 끄고, `deploy/offline/profile_plugins.py`를 통해 사용자가 고른 카탈로그 항목만 프로필에 설치합니다.
+
+## 플러그인 아키텍처
+
+Docker 빌드는 고정한 `homelab-dsh-plugins` 커밋을 가져와 `scripts/build.sh`를 실행합니다. DSH가 시작될 때 이 저장소를 clone하지 않습니다. 빌드된 Node.js 플러그인 패키지는 이미지에 연결됩니다. 실행할 때 `--plugin <ID>`는 `deploy/offline/profile_plugins.py`에 정의된 ID와 패키지 매핑에서 항목을 고릅니다. 실행기는 선택한 DSH bundle과 로컬 `file:` 의존성을 영속 Web 프로필에 기록하고, 패키지 디렉터리를 프로필의 `node_modules`에 연결합니다. 새 상태 디렉터리에서는 선택 플러그인을 활성화하지 않으며 이후 실행은 기존 선택을 유지합니다.
+
+Web 프로필은 Cordis bundle과 플러그인 항목을 조합합니다. `dsh-context`, `dsh-claude-artifacts`, `dsh-claude-design`, `dsh-crew`는 Cordis patch를 추가하는 bundle입니다. `dsh-browser`는 선택했을 때 제공된 preset에 플러그인 항목으로 삽입합니다. 어떤 패키지를 골라도 보안 오버레이와 Linux 방화벽 정책은 유지됩니다. 플러그인을 골라도 공개 네트워크 권한은 생기지 않습니다. 브라우저가 접속할 origin은 매번 정확한 `--browser-origin` 항목으로 허용해야 합니다.
 
 ## 데이터 흐름과 네트워크
 

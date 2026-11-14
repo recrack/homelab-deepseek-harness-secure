@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/i18n/README.md
 /bilingual-documentation:
-  en: f9829ce537be0f72
-  zh: 5ab1c534d35fb0b3
+  en: d646242aa94406f5
+  zh: a97fa00ee55dfe33
 /bilingual-documentation/the-pairing-contract:
   en: f67fecc8791baa0b
   zh: cfb74225cd88a468
@@ -12,8 +12,8 @@
   en: 08386e96eebf06d9
   zh: c6d2b41199b0c466
 /bilingual-documentation/scope-and-exclusions:
-  en: 364863018277ca35
-  zh: 72c33f7f25241770
+  en: d5bc9b6e6b7c3a17
+  zh: dc906c2674bfc878
 /bilingual-documentation/division-of-labor:
   en: 88097c97cb72f3ba
   zh: 78a18000626cc818
