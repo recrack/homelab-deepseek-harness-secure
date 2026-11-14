@@ -255,6 +255,7 @@ describe('CI workflow', () => {
     const wine = workflowJob(loadWorkflow('.github/workflows/ci-master.yml'), 'windows')
     if (!isRecord(ci.jobs) || !isRecord(windows.jobs)) throw new TypeError('CI workflows must define jobs')
     expect(ci.jobs['node-24-consumers']).toBeUndefined()
+    expect(workflowJob(ci, 'all-checks-passed').needs).not.toContain('node-24-consumers')
     expect(ci.jobs['node-24-coverage']).toBeUndefined()
     expect(workflowJob(ci, 'all-checks-passed').needs).not.toContain('node-24-coverage')
     expect(windows.jobs['windows-coverage']).toBeUndefined()
