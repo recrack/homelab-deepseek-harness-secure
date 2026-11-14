@@ -1,7 +1,7 @@
 /**
- * Enforce complete English/Chinese pairs, matching structure, and recorded
- * per-section hashes for every in-scope document. The manifest contains only explicit
- * exclusions, which may have neither a counterpart nor a sidecar.
+ * Validate any optional English/Chinese document pairs for matching structure
+ * and recorded per-section hashes. English-only documents need no counterpart
+ * or sidecar.
  * `--list` reports state; `--write <pairs...>` records the named confirmed
  * pairs (`--write --all` records every complete pair); `--cached <pairs...>`
  * checks exact index bytes for hooks. A check or write named with pair paths
@@ -100,8 +100,7 @@ function isExcluded(file: string): boolean {
 const recordContext = { repoRoot: root, isTranslationPairSource, repositoryFileExists }
 
 // Enumerate the scope once: the whole corpus, or exactly the named pairs'
-// three files (a named pair whose files are absent is caught by the same
-// completeness rules that cover discovered remnants).
+// three files. Existing partial pairs are rejected below.
 const files = new Set<string>()
 if (request.scope === 'pairs') {
   for (const anchor of request.anchors) {
@@ -110,8 +109,7 @@ if (request.scope === 'pairs') {
       if (repositoryFileExists(file)) files.add(file)
     }
     // A named worktree anchor with no files still enters the source list so
-    // an interactive check reports it. An index check accepts a complete
-    // three-file deletion and still rejects every partial deletion below.
+    // an interactive check reports it. An index check accepts complete pair deletion.
     if (!indexMode && !repositoryFileExists(anchor)) files.add(anchor)
   }
 } else {
@@ -144,7 +142,7 @@ if (request.scope === 'pairs') {
 
 // --write: (re)record the section hashes for the requested complete pairs, creating
 // missing records. A named pair that cannot be recorded (missing counterpart)
-// fails loud; corpus scope (--all) skips pairless sources as before.
+// fails loud; corpus scope (--all) skips English-only sources.
 if (writeMode) {
   let written = 0
   for (const source of sources) {
@@ -183,19 +181,9 @@ if (writeMode) {
 }
 
 const errors: string[] = []
-const state = new Map<string, 'ok' | 'out-of-sync' | 'missing'>()
+const state = new Map<string, 'ok' | 'out-of-sync'>()
 
-// 1. Every discovered, non-excluded source merges bilingual.
-for (const source of sources) {
-  if (isExcluded(source)) continue
-  const { zh } = translationPairPaths(source)
-  if (!repositoryFileExists(zh)) {
-    errors.push(`${source}: in-scope documentation must merge bilingual (docs/i18n/README.md); add the counterpart and record the pair`)
-    state.set(source, 'missing')
-  }
-}
-
-// 2. Every pair that exists at all is complete and consistent. Anchor on the
+// Every pair that exists at all is complete and consistent. Anchor on the
 // union of .zh.md files and .i18n.yaml records so a half-deleted pair is
 // caught from either remnant.
 const pairAnchors = new Set<string>()
@@ -339,30 +327,25 @@ for (const source of [...pairAnchors].sort()) {
   if (!state.has(source)) state.set(source, 'ok')
 }
 
-// Complete the state map for --list: any in-scope, non-excluded document with no pair is missing.
-for (const source of sources) {
-  if (!isExcluded(source) && !state.has(source)) state.set(source, 'missing')
-}
-
 if (listMode) {
-  const order = { 'out-of-sync': 0, missing: 1, ok: 2 } as const
+  const order = { 'out-of-sync': 0, ok: 1 } as const
   const rows = [...state.entries()].sort((a, b) => order[a[1]] - order[b[1]] || a[0].localeCompare(b[0]))
   for (const [file, status] of rows) {
-    console.log(`${status.padEnd(11)} ${file}${status === 'missing' ? '  (required)' : ''}`)
+    console.log(`${status.padEnd(11)} ${file}`)
   }
-  const counts = { 'ok': 0, 'out-of-sync': 0, 'missing': 0 }
+  const counts = { 'ok': 0, 'out-of-sync': 0 }
   for (const status of state.values()) counts[status]++
-  console.log(`verify-translation-pairing: ${counts.ok} ok, ${counts['out-of-sync']} out-of-sync, ${counts.missing} missing (of ${state.size} in scope)`)
+  console.log(`verify-translation-pairing: ${counts.ok} complete, ${counts['out-of-sync']} out-of-sync optional pair(s) (of ${state.size})`)
   process.exit(0)
 }
 
 if (errors.length === 0) {
   console.log(request.scope === 'pairs'
     ? `verify-translation-pairing: ${pairAnchors.size} named ${indexMode ? 'staged ' : ''}pair(s) consistent; the corpus-wide check still runs in doc-sync.`
-    : `verify-translation-pairing: ${pairAnchors.size} pair(s) checked across all in-scope documentation, all consistent.`)
+    : `verify-translation-pairing: ${pairAnchors.size} optional pair(s) checked, all consistent.`)
   process.exit(0)
 }
 
-console.error('verify-translation-pairing: bilingual pairing rules violated (see docs/i18n/README.md):')
+console.error('verify-translation-pairing: optional translation pair violations (see docs/i18n/README.md):')
 for (const message of errors) console.error(`  ${message}`)
 process.exit(1)

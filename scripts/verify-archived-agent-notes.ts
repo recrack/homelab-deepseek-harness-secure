@@ -1,6 +1,7 @@
 /** Verify and append-seal the frozen Agent Note archive. */
 
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { AGENT_NOTE_CLASSES, agentNoteRoot } from './agent-note-tree.ts'
@@ -72,6 +73,15 @@ function readBaselineManifest(ref: string): ArchiveManifest {
   return parseArchiveManifest(runGit(['show', `${ref}:${manifestRepoPath}`]))
 }
 
+/** Remove only the retired English-to-Chinese navigation line and its blank line. */
+function withoutTranslationSwitcher(content: string): string {
+  return content.replace(/^English \| \[中文\]\([^\n)]*\.zh\.md\)\r?\n(?:\r?\n)?/gmu, '')
+}
+
+function archiveHash(content: Buffer): string {
+  return `sha256:${createHash('sha256').update(content).digest('hex')}`
+}
+
 let manifest: ArchiveManifest = { version: 1, files: {} }
 if (existsSync(manifestPath)) {
   try {
@@ -85,17 +95,28 @@ if (existsSync(manifestPath)) {
 
 // CI supplies its trusted pre-change commit; local writes compare with committed HEAD.
 const baselineRef = process.env.DSH_ARCHIVE_BASE_REF ?? 'HEAD'
+let extended: ReturnType<typeof extendArchiveManifest> | undefined
 try {
   const baseline = readBaselineManifest(baselineRef)
-  errors.push(...validateArchiveManifestExtension(baseline, manifest))
+  const authorizedSwitcherRemovals = new Set<string>()
+  for (const path of Object.keys(baseline.files)) {
+    if (!path.endsWith('.md')) continue
+    const current = artifacts.get(path)
+    if (current === undefined) continue
+    if (baseline.files[path] === archiveHash(current)) continue
+    const original = runGit(['show', `${baselineRef}:.agents/notes/archived/${path}`])
+    if (withoutTranslationSwitcher(original) === current.toString('utf8') && original !== current.toString('utf8')) {
+      authorizedSwitcherRemovals.add(path)
+    }
+  }
+  extended = extendArchiveManifest(manifest, artifacts, authorizedSwitcherRemovals)
+  errors.push(...extended.errors)
+  errors.push(...validateArchiveManifestExtension(baseline, { version: 1, files: extended.files }, authorizedSwitcherRemovals))
+  if (!writeMode) {
+    for (const path of extended.added) errors.push(`${path}: archived artifact is not sealed in manifest.json`)
+  }
 } catch (error: unknown) {
   errors.push(`archived/manifest.json: cannot read baseline ${JSON.stringify(baselineRef)}: ${error instanceof Error ? error.message : String(error)}`)
-}
-
-const extended = extendArchiveManifest(manifest, artifacts)
-errors.push(...extended.errors)
-if (!writeMode) {
-  for (const path of extended.added) errors.push(`${path}: archived artifact is not sealed in manifest.json`)
 }
 
 if (errors.length > 0) {
@@ -105,11 +126,12 @@ if (errors.length > 0) {
 }
 
 if (writeMode) {
+  if (extended === undefined) throw new Error('archive manifest migration did not produce a manifest')
   const rendered = renderArchiveManifest(extended.files)
   if (!existsSync(manifestPath) || readFileSync(manifestPath, 'utf8') !== rendered) {
     writeFileSync(manifestPath, rendered)
   }
-  console.log(`verify-archived-agent-notes: sealed ${extended.added.length} new artifact(s); existing seals unchanged.`)
+  console.log(`verify-archived-agent-notes: sealed ${extended.added.length} new artifact(s); authorized translation removals recorded.`)
 } else {
   console.log(`verify-archived-agent-notes: ${artifacts.size} frozen artifact(s) checked across ${kinds.size} kind(s).`)
 }

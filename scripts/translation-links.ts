@@ -1,4 +1,4 @@
-/** Locale-aware resolution and byte-preserving rewrites for bilingual Markdown links. */
+/** Locale-aware resolution and byte-preserving rewrites for requested translations. */
 
 import { existsSync, statSync } from 'node:fs'
 import { posix, resolve } from 'node:path'
@@ -18,7 +18,7 @@ export interface TranslationLinkContext {
   repoRoot: string
   /** Repository-relative Markdown source path. */
   sourcePath: string
-  /** Whether an English Markdown path belongs to the active bilingual corpus. */
+  /** Whether an English Markdown path can have an optional translated sibling. */
   isTranslationPairSource: (sourcePath: string) => boolean
   /** Selected content plane; defaults to regular files in the working tree. */
   repositoryFileExists?: (repoPath: string) => boolean
@@ -166,7 +166,7 @@ function expectedLocalePath(
   context: TranslationLinkContext,
   expectedPath: string,
 ): string {
-  if (locale === 'zh' && rawPath.endsWith('.md') && !rawPath.endsWith('.zh.md')) {
+  if (locale === 'zh' && expectedPath.endsWith('.zh.md') && rawPath.endsWith('.md') && !rawPath.endsWith('.zh.md')) {
     return rawPath.replace(/\.md$/, '.zh.md')
   }
   if (locale === 'en' && rawPath.endsWith('.zh.md')) return rawPath.replace(/\.zh\.md$/, '.md')
@@ -187,7 +187,7 @@ function resolveTranslationLink(
   const pair = translationPairTarget(targetPath, context)
   if (pair === undefined) return undefined
   const locale = context.sourcePath.endsWith('.zh.md') ? 'zh' : 'en'
-  const expectedPath = locale === 'zh' ? pair.zh : pair.source
+  const expectedPath = locale === 'zh' && repositoryFileExists(context, pair.zh) ? pair.zh : pair.source
   return {
     pair,
     targetPath,

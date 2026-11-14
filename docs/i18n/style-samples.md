@@ -16,7 +16,7 @@
 
 > This document covers **behavior**; type definitions live in [subsystems/](../subsystems/core.md), the per-event/service reference lives in the generated regions of [subsystems/](../subsystems/core.md), and package contracts in the package READMEs state each package's required configuration and behavior ([map](../../packages/README.md)).
 
-本文档描述整体行为逻辑；类型定义存放于 [subsystems/](../subsystems/core.zh.md)；各类事件、服务的详细参考见 [subsystems/](../subsystems/core.zh.md) 中的生成区块；相应的 README 说明每个包（package）要求的配置和行为（[索引](../../packages/README.zh.md)）。
+本文档描述整体行为逻辑；类型定义存放于 [subsystems/](../subsystems/core.md)；各类事件、服务的详细参考见 [subsystems/](../subsystems/core.md) 中的生成区块；相应的 README 说明每个包（package）要求的配置和行为（[索引](../../packages/README.md)）。
 
 ## ② 防御模式规则
 
@@ -68,7 +68,9 @@
 
 对比双语文件的 git 时间戳（无记录方案）——不予采纳：仅调整格式的改动会触发误报，无关修改后再提交译文又会造成漏检。只有基于内容本身的标识（每侧文件的 blob hash 与伴随记录比对），才能承载门禁所声称的语义。
 
-## ⑦ 统一要求（长段拆分示范）
+## ⑦ 历史政策示例（当前不适用）
+
+以下摘录展示旧版政策的长段格式，不构成当前文档维护要求。
 
 > **Universal requirement**: every in-scope document merges as a complete bilingual pair. The manifest contains only explicit exclusions: it has no per-file rollout list, date cutoff, or README-specific policy class. […] Pairing is a continuing obligation: every later edit to either side updates the counterpart and consistency record in the same change.
 

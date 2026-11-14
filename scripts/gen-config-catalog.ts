@@ -12,22 +12,11 @@ import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import ts from 'typescript'
 import { LINK_MAP } from './gen-cordis-catalog.ts'
 import { parseJsDoc, pointer, rawJsDoc } from './jsdoc.ts'
-import { rewriteTranslationLinkLocales } from './translation-links.ts'
-import {
-  computeTranslationPairingRecord,
-  renderTranslationPairingRecord,
-  translationPairPaths,
-} from './translation-pairing-record.ts'
-import {
-  languageSwitcherTargets,
-  parseTranslationPairingManifest,
-  renderGeneratedRegion,
-  translationPairSourcePredicate,
-} from './translation-pairing.ts'
+import { renderGeneratedRegion } from './translation-pairing.ts'
 import { githubSlug } from './verify-md-links.ts'
 
 const root = resolve(import.meta.dirname, '..')
-const PATHS = translationPairPaths('docs/config-catalog.md')
+const OUTPUT = 'docs/config-catalog.md'
 
 /** The fenced-block info string for pasted config declarations (skipped by
  * doc-typecheck, since a lone declaration referencing imports is not
@@ -962,7 +951,7 @@ const TEXT: Record<Locale, {
     switcher: [],
     intro: [
       'Every `config:` block a `cordis.yml` entry can set: for each loadable harness package, the verbatim config declaration (JSDoc included) its `apply` function or service constructor receives, with every referenced type pasted alongside (package-local types) or linked (everything else). The paste is the plugin\'s full declared config type — a field the runtime schema deliberately excludes is a runtime-only seam (its own JSDoc says so) and is not settable from `cordis.yml`. This is the **deployment**-axis reference — the wiring a plugin author works against is the generated Cordis API region on each [subsystem page](subsystems/core.md), the model-facing tool schemas are the [tool catalog](tool-catalog.md), and [subsystems/](subsystems/core.md) documents the types these declarations reference.',
-      'Both language versions of this file are GENERATED from source (`scripts/gen-config-catalog.ts`) and verified fresh by `pnpm run verify-config-catalog` (part of `doc-sync`) — do not edit them by hand. Declaration blocks use a `ts config-catalog` fence (skipped by doc-typecheck, since a lone declaration referencing imports is not standalone-compilable). The generator also cross-checks the runtime schemastery schema against the pasted declaration — every schema-validated key, nested keys included, must be locatable on the declared config type — so the paste cannot hide a loader-accepted field.',
+      'This English reference is GENERATED from source (`scripts/gen-config-catalog.ts`) and verified fresh by `pnpm run verify-config-catalog` (part of `doc-sync`) — do not edit it by hand. Declaration blocks use a `ts config-catalog` fence (skipped by doc-typecheck, since a lone declaration referencing imports is not standalone-compilable). The generator also cross-checks the runtime schemastery schema against the pasted declaration — every schema-validated key, nested keys included, must be locatable on the declared config type — so the paste cannot hide a loader-accepted field.',
       'Each package entry labels its data with three identifiers: `inject` lists the service keys the plugin injects, so its `cordis.yml` tree must also load providers for those services; `refs` lists the referenced types that are not pasted here; `source` links the file that declares the config. Scope is the harness tier (`packages/`); the vendored cordis plugins a config tree may also load (the console logger, …) are pinned upstream source ([vendoring policy](../vendor/README.md)) and not catalogued here.',
     ],
     noConfig: [
@@ -1013,7 +1002,7 @@ function sourceLink(source: string): string {
   return `[\`${source}\`](../${source.split(':')[0]})`
 }
 
-/** Render one configurable plugin as a generated region shared by both languages. */
+/** Render one configurable plugin as a generated region. */
 function renderConfigEntry(entry: CatalogEntry, byName: Map<string, CatalogEntry>): string {
   const fields = [
     ...(entry.inject.length > 0 ? [`- \`inject\`: ${codeList(entry.inject)}`] : []),
@@ -1073,32 +1062,16 @@ export function render(entries: CatalogEntry[], locale: Locale = 'en'): string {
 }
 
 /**
- * Compute both language versions and their consistency record.
- * @param scanRoot - Repository root used to resolve paired-document links.
- * @returns Repository-relative output paths and exact generated content.
+ * Compute the English catalog output.
+ * @param scanRoot - Repository root containing package manifests and sources.
+ * @returns The repository-relative output path and exact generated content.
  */
 export function computeConfigCatalogOutputs(scanRoot: string = root): ReadonlyMap<string, string> {
-  const entries = collectConfigCatalog()
-  const context = {
-    repoRoot: scanRoot,
-    isTranslationPairSource: translationPairSourcePredicate(parseTranslationPairingManifest(
-      readFileSync(resolve(scanRoot, 'scripts/translation-pairing.manifest.json'), 'utf8'),
-    )),
-  }
-  const en = render(entries, 'en')
-  const zh = rewriteTranslationLinkLocales(
-    render(entries, 'zh'),
-    { ...context, sourcePath: PATHS.zh },
-    languageSwitcherTargets(PATHS.source),
-  ).content
-  return new Map([
-    [PATHS.source, en],
-    [PATHS.zh, zh],
-    [PATHS.meta, renderTranslationPairingRecord(PATHS, computeTranslationPairingRecord(PATHS, en, zh, context))],
-  ])
+  const entries = collectConfigCatalog(scanRoot)
+  return new Map([[OUTPUT, render(entries, 'en')]])
 }
 
-/** CLI entry: default writes the catalog pair and record, `--check` fails if any
+/** CLI entry: default writes the catalog, `--check` fails if the
  * committed copy is stale. Guarded behind an entry-point check so importing this
  * module for tests neither regenerates the committed files nor calls process.exit. */
 function main(): void {

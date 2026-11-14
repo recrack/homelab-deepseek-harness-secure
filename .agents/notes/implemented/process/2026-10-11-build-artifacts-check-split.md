@@ -2,8 +2,6 @@
 
 Status: implemented
 
-English | [中文](2026-10-11-build-artifacts-check-split.zh.md)
-
 ## Problem
 
 `pnpm run build` runs the native addon, the package-library build (Host `tsc -b tsconfig.host.json` → Host tsdown → Desktop bundle → Client `tsc -b tsconfig.client.json` → Client tsdown), and the Web build serially. Besides referencing package projects, the Host and Client aggregates each carry a `noEmit` root program covering tests, scripts, benchmarks, and website. These two root programs emit no files and feed no later artifact step, yet sit on the serial critical path: timed alone, the Host root program takes 68.5 s and the Client root program 36.0 s, while the serial package-library build takes about 249 s (median of 2).
@@ -50,7 +48,7 @@ Each command does only its own job.
 | `typecheck` (run by the pre-push hook) | `build.ts --scope typecheck`: host-typert (the source-only Typert pass `generate-typert.ts`) → package compilation, with `tsc -b tsconfig.{host,client}.json` after each face's package compilation; no bundle | Yes |
 | `dev:web` ([`scripts/dev-web.ts`](../../../../scripts/dev-web.ts)), `dev:desktop` (`apps/desktop/scripts/dev.ts`) | `build:artifacts` | None before launch; after `dev:web` launches, its `tsc -b tsconfig.client.json --watch` keeps checking the Client aggregate root program |
 | Prerequisite step of `lint`, `lint:fix`, `doc-typecheck`, and the CI Typert contracts gate | Source-only Typert generation before Host package compilation (`compile-referenced-projects.ts host-contracts`), without any bundle | None |
-| CI node 24 / snapshots and artifacts (`check:ci:consumers`), windows node 24 / build & observational (`check:ci:windows-blocking`) | `build` | Yes, the two required lanes |
+| CI master serial Linux (`check:ci:linux-primary`), Windows node 24 / build & observational (`check:ci:windows-blocking`) | `build` | Yes, both lanes |
 | CI node-compat 24.9 | `build:artifacts` (through run-gates) | None |
 | CI python runtime | `build-exe-for-python-sdk.ts --build-artifacts` | None |
 | PR rehearsals in `e2e.yml` and `release.yml` | `pnpm run build:artifacts --profile official` | None |
@@ -61,7 +59,7 @@ Each command does only its own job.
 
 `lint`, `lint:fix`, `doc-typecheck`, and the Typert contracts gate read only Typert outputs and package declarations: both aggregates are `noEmit`, oxlint builds its own programs, `doc-typecheck` references only package projects, and none of them reads a bundle. Their prerequisite step therefore skips the Host aggregate check and every bundle; skipping the Host aggregate check and the Desktop bundle alone took it from 159.8 s to 90.9 s (see the measurements below).
 
-The consumers lane's HMR Web test starts `dev:web` and therefore uses `build:artifacts` inside that lane; the same lane's `build` gate still runs both aggregate checks. CI does not call `build:check` separately: the two required lanes already get the same checks through `build`. The [PR artifact build decision](2026-10-05-pr-artifact-typechecks.md) keeps its required complete builds, benchmark `--noCheck`, job and worker ceilings, serial node-compat Vitest, coverage weights, and pnpm packing checks; its PR artifact build is `build:artifacts`.
+The `ci-consumers` aggregate's HMR Web test starts `dev:web` and therefore uses `build:artifacts` inside that aggregate; its `build` gate still runs both aggregate checks. CI does not call `build:check` separately: the master Linux serial reference and Windows PR build lane already get the same checks through `build`. The [PR artifact build decision](2026-10-05-pr-artifact-typechecks.md) keeps its required complete builds, benchmark `--noCheck`, job and worker ceilings, serial node-compat Vitest, coverage weights, and pnpm packing checks; its PR artifact build is `build:artifacts`.
 
 ### Measurements
 
@@ -93,10 +91,10 @@ The serial branch sample overlapped other work on the host (742 s of foreign CPU
 
 `build` runs the same set of compiler programs as the serial build: host-src and client-src compile every package project of both faces, and host-check and client-check check both aggregate root programs with the same commands as `build:check`. Across the prototype's six rounds, the 11,580 files of `{packages,apps,vendor,native}/**/lib/**` (excluding `*.tsbuildinfo`) are byte-identical between serial and concurrent runs, and after every round `tsc -b --dry tsconfig.host.json tsconfig.client.json` reports no out-of-date project. tsbuildinfo writers are host-src (292), client-src (76, exactly the client-only projects), and one per aggregate check; client-src rewrites no tsbuildinfo or declaration that host-check reads, so the graph has no write race. The fixture tests `checks only the aggregate program in project mode` and `reports missing package declarations without compiling references` show that `tsc -b --dry` treats the tsbuildinfo written by `tsc -p` as up to date and that project mode compiles no reference. In this implementation, the concurrent `build` and `DSH_GATE_CONCURRENCY=1 pnpm run build` produce byte-identical `lib/` (11,584 files), `apps/web/dist` (156 files), and client build record; afterwards `tsc -b --dry` reports all 372 projects of both aggregates up to date, with none to build.
 
-| Error | `build:artifacts` | `build:check` | `build` | `typecheck` | Required CI lanes |
+| Error | `build:artifacts` | `build:check` | `build` | `typecheck` | CI lanes |
 |---|---|---|---|---|---|
 | Package source type error | host-src / client-src | Not reported (reads existing declarations) | host-src / client-src | Reported | Reported |
-| Type error only in an aggregate root program's tests, scripts, benchmarks, or website | Not reported | host-check / client-check | host-check / client-check | Reported | consumers, windows-build |
+| Type error only in an aggregate root program's tests, scripts, benchmarks, or website | Not reported | host-check / client-check | host-check / client-check | Reported | serial-linux-selfhosted, windows-build |
 | Package tsconfig configuration error | host-src / client-src | Not reported (`tsc -p` does not validate referenced projects' tsconfig options or syntax) | host-src / client-src | Reported | Reported |
 | Typert analysis error | host-typert | Not reported | host-typert | Reported (through host-typert) | Reported |
 | Missing prerequisite output | — | Compiler diagnostic (TS6305, TS2307) | — | — | — |
@@ -107,7 +105,7 @@ CI evidence: on PR #6005 both required lanes that run the concurrent `pnpm run b
 
 ### Intentional trade-offs (not lossless)
 
-- **Some commands skip the aggregate checks:** `build:artifacts`, the launch builds of `dev:web` and `dev:desktop`, and the prerequisite steps of `lint`, `lint:fix`, `doc-typecheck`, and the Typert contracts gate do not type-check the two aggregate root programs, and these prerequisite steps produce declarations and Typert outputs but no bundle. `build`, `build:check`, `typecheck` (pre-push hook), and the two required CI lanes own completeness; `dev:web` and `dev:desktop` do not refuse to launch because of test type errors.
+- **Some commands skip the aggregate checks:** `build:artifacts`, the launch builds of `dev:web` and `dev:desktop`, and the prerequisite steps of `lint`, `lint:fix`, `doc-typecheck`, and the Typert contracts gate do not type-check the two aggregate root programs, and these prerequisite steps produce declarations and Typert outputs but no bundle. `build`, `build:check`, `typecheck` (pre-push hook), and the master Linux serial reference plus Windows PR build lane own completeness; `dev:web` and `dev:desktop` do not refuse to launch because of test type errors.
 - **`build:check` does not check freshness:** When sources change after `build:artifacts`, `build:check` checks against stale declarations, including Typert Remote declarations; rerun `build:artifacts` first. The complete `build` is unaffected.
 - **Concurrent `build` raises the memory peak:** This branch's complete `build` peaks at 7.53 GiB of process-tree RSS against 6.11 GiB for the master serial build (+1.42 GiB, medians of 2) and 6.27 GiB for the branch's serial build (n=1); CPU meanwhile falls from 423.1 s to 374.4 s because [the lossless speed-ups note](2026-10-11-lossless-build-speedups.md) removes more work than concurrent contention adds. In the prototype (without the Typert changes), concurrent scheduling alone raises the RSS peak by about 2.1 GiB (5.9 → 8.0 GiB) and CPU by about 3.7%. `DSH_GATE_CONCURRENCY` bounds it; under memory pressure use `DSH_GATE_CONCURRENCY=1 pnpm run build`, or run `build:artifacts` and `build:check` separately. In the windows-build lane, `build` runs concurrently with `docs:build`.
 - **Passing steps' output is hidden by default:** Only failed steps print their complete output.
@@ -134,7 +132,7 @@ CI evidence: on PR #6005 both required lanes that run the concurrent `pnpm run b
 
 Development iterations can skip the two aggregate root programs with `build:artifacts` (51.6% faster cold than master's `build`) and complete the checks with `build:check` or `build` before declaring work complete. `build` stays complete: the Host aggregate check is off the critical path, the Client aggregate check runs alongside the Client bundle and web, and a cold build is 46.7% faster than master (including the lossless speed-ups note's changes; medians of 2). The costs are a higher memory peak, a little extra CPU from concurrent contention, less passing output by default, and several development and prerequisite commands that do not check test types (see the trade-offs above).
 
-Removing or changing `build` in the two required lanes, consumers and windows-build, requires first transferring both aggregate checks to another blocking owner. The typecheck scope and the lint prerequisites generate Typert contracts without bundling ([local gate speed-ups](2026-10-12-local-gate-speedups.md)); artifact scopes use [source-first metadata ordering](2026-10-18-source-first-metadata-builds.md).
+Removing or changing `build` in the master Linux serial reference or Windows PR build lane requires first transferring both aggregate checks to another owner. The typecheck scope and the lint prerequisites generate Typert contracts without bundling ([local gate speed-ups](2026-10-12-local-gate-speedups.md)); artifact scopes use [source-first metadata ordering](2026-10-18-source-first-metadata-builds.md).
 
 host-src depends on host-typert, so generated Remote declarations precede package compilation. [Typert Remote method calls](../architecture/2026-08-02-typert-remote-method-calls.md) describes the emitted contributions.
 

@@ -2,8 +2,6 @@
 
 Status: implemented
 
-English | [中文](2026-09-06-frontend-performance-budgets.zh.md)
-
 ## Problem
 
 A fast Node conversation fold does not prove that a browser paints a long conversation or remains responsive while a response streams. Active reconnect also reconstructs a different representation from settled history: a compact prefix becomes public per-chunk Client entries. The [Session performance policy](2026-09-04-session-open-performance-gate.md) supplies an isolated CI job but does not measure these user paths.
@@ -71,6 +69,8 @@ Run 34036109842, job 101494445658 records open samples of 875.306861/1083.683529
 A controlled mouse-refocus delay waits for the real DONE marker without pausing replay: the mouse path rejects a trusted input after DONE, while Enter submission and keyboard-only draft input pass all three samples under the same control. The delay is diagnostic-only. A clean three-sample run on arm64 Node 24.19.0 / Chromium 149.0.7827.55 reports first-reply/input/complete-wall medians of 288.823/418.868/2567.328 ms, with actual overlap and post-DONE rejection in every sample. This proves removal of the mouse-action scheduling dependency, not the cause of a particular hosted stall; all workload constants and budgets remain fixed.
 
 The current Trajectory acceptance limit is 650 ms, represented by a 520 ms target with the shared 1.25× headroom. Run 35095609422 records medians of 666.651723 ms and 630.843184 ms on its original attempt and retry. This explicit 4% relaxation of the former 625 ms limit accepts the retry median but still rejects the original median; it is a budget decision, not a measured product speedup. Recorded retry samples exercise the accepted range, and the same verdict assertion rejects 651 ms. Other endpoint budgets and workload parameters remain unchanged.
+
+Browser measurements in standard-hosted runs 43615573962 (job 132509830900) and 43616815828 (job 132513578308), both on Chromium 149.0.7827.55, record stream-task samples 4653.965/4600.278/4690.877 ms (median 4653.965) and 4544.546/4716.295/4563.267 ms (median 4563.267). The first runner derives a 4951 ms limit from the EPYC 7763 profile; the second derives 4500 ms from the default profile and fails at the median. These independent runs measure the same built browser workload; the second remains within 2% of the first median. Set the standard-hosted expectation to 4700 ms, rounded above the larger observed median, and retain the shared 1.25× variance headroom for a 5875 ms budget. A deterministic control accepts both recorded medians and rejects 5876 ms. This calibration changes only the stream main-thread-task limit; it is based on measured browser CI data, not the Node CPU multiplier or a product optimization.
 
 ### Older-page control preparation
 

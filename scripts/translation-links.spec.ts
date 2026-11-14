@@ -107,12 +107,12 @@ describe('translation link locale validation', () => {
     )).toEqual([])
   })
 
-  it('does not fall back when an active target is missing its locale sibling', () => {
+  it('keeps the English link when the target has no translated sibling', () => {
     const root = fixture()
     expect(translationLinkLocaleViolations(
       '[missing](unpaired.md)\n',
       linkContext(root, 'docs/guide.zh.md'),
-    )[0]).toMatchObject({ expectedUrl: 'unpaired.zh.md' })
+    )).toEqual([])
   })
 
   it('requires English sources to use the English sibling', () => {
@@ -174,7 +174,7 @@ describe('translation link locale validation', () => {
     expect(translationLinkLocaleViolations(
       '[概览](reference.md)\n',
       linkContext(root, 'docs/guide.zh.md', path => staged.has(path)),
-    )).toHaveLength(1)
+    )).toEqual([])
     staged.delete('docs/reference.md')
     expect(translationLinkLocaleViolations(
       '[概览](reference.md)\n',

@@ -2,8 +2,6 @@
 
 Status: implemented
 
-English | [中文](2026-11-14-remove-upstream-weighted-approval.zh.md)
-
 ## Problem
 
 The inherited weighted approval workflow gives named upstream reviewers two points, other write-capable reviewers one point, and adds author credit from merged pull requests. Its special reviewer weights and production-code blame model describe the source project's review policy, not a review requirement defined for this repository.

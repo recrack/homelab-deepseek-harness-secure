@@ -4,8 +4,6 @@ description: "Offline plugins now require explicit selection instead of automati
 ---
 # Offline plugins require explicit selection
 
-English | [中文](guide.zh.md)
-
 ## Change
 
 The offline launcher used to add `dsh-context`, both Baoyu plugins, and DSH Crew to every new Web profile, and it mounted `dsh-browser` in every Web preset. It now installs and activates optional plugins only when selected with the repeatable `--plugin <id>` option. The choices are stored in the persistent Web profile, so a selected plugin stays active on later launches. Existing profiles keep their installed bundle selections. The browser must be selected on each launch that uses `--browser-origin`; Hermes ACP requires selecting `dsh-crew` on each launch that passes `--hermes-acp-volume`.

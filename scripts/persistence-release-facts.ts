@@ -2,7 +2,7 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { renderPersistencePair } from './persistence-artifacts.ts'
+import { renderPersistenceDocument } from './persistence-artifacts.ts'
 import type { PersistenceArtifact } from './persistence-artifacts.ts'
 import type { PersistenceReleaseEntry, PersistenceReleases } from './persistence-releases.ts'
 import { canonicalizeSchema, schemaDigest } from './persistence-schema-model.ts'
@@ -45,10 +45,10 @@ function structuralChanges(entry: PersistenceReleaseEntry, language: Language): 
   return [summary, '', heading, '|---|---|---|', ...rows].join('\n')
 }
 
-/** Compute paired factual updates without writing or changing machine declarations.
+/** Compute factual updates without writing or changing machine declarations.
  * @param root - checkout containing existing documents with bounded factual markers.
  * @param archive - fully validated release records and reconstructed roots.
- * @returns complete bilingual documents and sidecars, validated together before any caller writes.
+ * @returns generated English documents without writing files.
  */
 export function persistenceReleaseFactArtifacts(root: string, archive: PersistenceReleases): PersistenceArtifact[] {
   const directory = 'docs/persistence-changes/releases'
@@ -77,19 +77,14 @@ export function persistenceReleaseFactArtifacts(root: string, archive: Persisten
     })
     return '\n\n' + [heading, '|---|---|---|---|---|', ...rows].join('\n') + '\n\n'
   }
-  const artifacts = renderPersistencePair(root, `${directory}/README.md`,
-    replaceFacts(read('README.md'), 'index', index('en'), 'README.md'),
-    replaceFacts(read('README.zh.md'), 'index', index('zh'), 'README.zh.md'))
+  const indexPath = `${directory}/README.md`
+  const artifacts = renderPersistenceDocument(indexPath, replaceFacts(read('README.md'), 'index', index('en'), 'README.md'))
   for (const [index, entry] of archive.entries.entries()) {
-    const document = (language: Language): string => {
-      const path = `${entry.release.tag}${language === 'zh' ? '.zh' : ''}.md`
-      const inventory = language === 'en'
-        ? `${count(entry.roots.size, 'root')} / ${count(typeCounts[index] as number, 'type')}`
-        : `${entry.roots.size} 个根类型 / ${typeCounts[index]} 种类型`
-      return replaceFacts(replaceFacts(read(path), 'inventory', inventory, path),
-        'changes', '\n\n' + structuralChanges(entry, language) + '\n\n', path)
-    }
-    artifacts.push(...renderPersistencePair(root, `${directory}/${entry.release.tag}.md`, document('en'), document('zh')))
+    const path = `${entry.release.tag}.md`
+    const inventory = `${count(entry.roots.size, 'root')} / ${count(typeCounts[index] as number, 'type')}`
+    const content = replaceFacts(replaceFacts(read(path), 'inventory', inventory, path),
+      'changes', '\n\n' + structuralChanges(entry, 'en') + '\n\n', path)
+    artifacts.push(...renderPersistenceDocument(`${directory}/${entry.release.tag}.md`, content))
   }
   return artifacts
 }

@@ -1,4 +1,4 @@
-/** Git index reads owned by the bilingual pairing gate. */
+/** Git index reads used by the optional translation-pairing checker. */
 
 import { spawnSync } from 'node:child_process'
 
