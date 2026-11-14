@@ -322,7 +322,8 @@ describe('standard hosted reopen calibration', () => {
   it('rejects synthetic reopen and multi-second first-open regressions', () => {
     const regressionMedian = median([74, 75, 76, 75, 74])
     expect(() => expectOpenWithinBudget(regressionMedian, REOPEN_OPEN_BUDGET_MS)).toThrow()
-    expect(MIGRATION_OPEN_BUDGET_MS).toBe(550)
+    expect(ciTimeBudget(EXPECTED_MS.migrationOpen, 'AMD EPYC 7763 64-Core Processor')).toBe(606)
+    expect(ciTimeBudget(EXPECTED_MS.migrationOpen, 'unknown CPU')).toBe(550)
     expect(() => expectOpenWithinBudget(4_000, MIGRATION_OPEN_BUDGET_MS)).toThrow()
   })
 })
