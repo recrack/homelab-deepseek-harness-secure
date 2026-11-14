@@ -17,9 +17,11 @@ const REFERENCE = { open: 200, page: 260, trajectory: 160, first: 1100, streamTa
 const EXPECTED_OPEN_CI_MS = 900
 const EXPECTED_PAGE_CI_MS = 700
 const EXPECTED_TRAJECTORY_CI_MS = 520
+const EXPECTED_STREAM_TASK_CI_MS = 4700
 const OPEN_BUDGET_MS = Math.ceil(EXPECTED_OPEN_CI_MS * PERFORMANCE_BUDGET_HEADROOM)
 const PAGE_BUDGET_MS = Math.ceil(EXPECTED_PAGE_CI_MS * PERFORMANCE_BUDGET_HEADROOM)
 const TRAJECTORY_BUDGET_MS = Math.ceil(EXPECTED_TRAJECTORY_CI_MS * PERFORMANCE_BUDGET_HEADROOM)
+const STREAM_TASK_BUDGET_MS = Math.ceil(EXPECTED_STREAM_TASK_CI_MS * PERFORMANCE_BUDGET_HEADROOM)
 const REPLAY_DURATION_MS = (DELTAS + 4) * PACE_MS
 /** Endpoints without paced replay waits, so CPU scaling applies to their whole duration. */
 const SCALED_ENDPOINTS = ['open', 'page', 'trajectory', 'streamTask'] as const
@@ -341,6 +343,12 @@ it('rejects ambiguous or replaced older-page buttons before paging', async () =>
   }
 })
 
+it('calibrates the stream-task budget against repeated hosted measurements', () => {
+  expect(STREAM_TASK_BUDGET_MS).toBe(5875)
+  for (const medianMs of [4653.965, 4563.267]) expectEndpointWithinBudget(medianMs, STREAM_TASK_BUDGET_MS)
+  expect(() => expectEndpointWithinBudget(STREAM_TASK_BUDGET_MS + 1, STREAM_TASK_BUDGET_MS)).toThrow()
+})
+
 it('opens, pages, navigates and streams into a 240-turn browser history', async () => {
   if (webSnapshotMode() !== 'replay') throw new Error('browser benchmarks require keyless replay mode')
   const samples: { open: number; page: number; trajectory: number; first: number; streamTask: number; streamWall: number; input: number; inputOverlapped: boolean; heapMb: number; nodes: number }[] = []
@@ -446,9 +454,9 @@ it('opens, pages, navigates and streams into a 240-turn browser history', async 
   const aggregate = Object.fromEntries(Object.keys(REFERENCE).map(key => [key, median(samples.map(sample => sample[key as keyof typeof REFERENCE]))]))
   const budgets: Record<string, number> = {
     ...Object.fromEntries(Object.entries(REFERENCE).map(([key, value]) => [key, ciTimeBudget(value) + (key === 'streamWall' ? REPLAY_DURATION_MS : 0)])),
-    open: OPEN_BUDGET_MS, page: PAGE_BUDGET_MS, trajectory: TRAJECTORY_BUDGET_MS,
+    open: OPEN_BUDGET_MS, page: PAGE_BUDGET_MS, trajectory: TRAJECTORY_BUDGET_MS, streamTask: STREAM_TASK_BUDGET_MS,
   }
-  console.log(JSON.stringify({ benchmark: 'long-session-browser/median', turns: HISTORY_TURNS, deltas: DELTAS, paceMs: PACE_MS, samples, aggregate, referenceMs: REFERENCE, expectedOpenCiMs: EXPECTED_OPEN_CI_MS, expectedPageCiMs: EXPECTED_PAGE_CI_MS, expectedTrajectoryCiMs: EXPECTED_TRAJECTORY_CI_MS, budgets }))
+  console.log(JSON.stringify({ benchmark: 'long-session-browser/median', turns: HISTORY_TURNS, deltas: DELTAS, paceMs: PACE_MS, samples, aggregate, referenceMs: REFERENCE, expectedOpenCiMs: EXPECTED_OPEN_CI_MS, expectedPageCiMs: EXPECTED_PAGE_CI_MS, expectedTrajectoryCiMs: EXPECTED_TRAJECTORY_CI_MS, expectedStreamTaskCiMs: EXPECTED_STREAM_TASK_CI_MS, budgets }))
   recordTimings(CASE, Object.fromEntries(SCALED_ENDPOINTS.map(key => [key, { ms: aggregate[key]!, ioShare: IO_SHARE }])), budgets)
   for (const [key, value] of Object.entries(aggregate)) expectEndpointWithinBudget(value, budgets[key]!)
 })
