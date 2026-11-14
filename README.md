@@ -1,77 +1,37 @@
-# DeepSeek Harness
+# Homelab DeepSeek Harness Secure
 
-English | [中文](README.zh.md)
+English | [한국어](README.ko.md)
 
-DeepSeek Harness (`dsh`) is an open-source agent harness developed by [DeepSeek AI](https://deepseek.com).
+This repository packages [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) for a local-model deployment with controlled web access. The [deployment guide](deploy/offline/README.md) owns build, launch, and operating details.
 
-It is built on an **everything-is-a-plugin** architecture and powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512).
+## Architecture and stacks
 
-Documentation: [https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
+The deployment separates the DSH agent from model relay, approved public retrieval, and search services. The DSH agent has no direct public network route. Search and page retrieval can reach public services only through their separate components after the user approves the exact query or URL.
 
-## Developer preview
+| Component | Stack | Role |
+| --- | --- | --- |
+| Host launcher and model relay | Python 3 standard library, Docker CLI | Validates the selected private IPv4 model endpoint, starts a route-limited relay, and manages per-run containers and networks. |
+| DSH agent | Node.js 24 on Debian Bookworm, pnpm 11.28.5, TypeScript/ESM, Cordis | Runs the Web or headless profile with telemetry, account providers, and remote session logging disabled by the deployment overlay. |
+| Network enforcement | Linux `iptables`, `ip6tables`, `setpriv` | Applies default-deny rules before DSH loads, blocks Docker DNS, and removes Linux capabilities from the agent process. |
+| Approved web collector | Separate Node.js ESM container and the DSH `public-web` profile | Shows each search query or fetch URL for local approval, then forwards only that approved request. It has no workspace or Session mount. |
+| Search engines | [SearXNG](https://github.com/searxng/searxng) in Python and [RustXNG](https://github.com/sahenjp/RustXNG) in Rust | Runs on a private Docker network. Approved queries can leave these services for their configured public search providers. |
 
-DeepSeek Harness is in _developer preview_ and iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**
+This setup blocks direct public egress from the DSH agent and blocks DeepSeek model, search, account, telemetry, and session-log providers in its profile. It still allows approved search queries and page requests to leave through the collector and search services. A selected model server or proxy can also forward requests to its own upstream.
 
-Review the [safety notice](SAFETY.md) before running the project.
+## Plugin architecture
 
-## Run
+The image build fetches a pinned [homelab-dsh-plugins](https://github.com/recrack/homelab-dsh-plugins) revision and builds its Node.js packages. DSH does not clone the plugin repository or download plugin packages at startup. The launcher installs only IDs passed with `--plugin` into the persistent Web profile using local package links.
 
-### Run from `npm`
+`dsh-context`, `dsh-claude-artifacts`, `dsh-claude-design`, and `dsh-crew` are Cordis bundles that add profile patches. `dsh-browser` is inserted as a Cordis plugin entry in shipped presets when selected. Plugin selection does not change the container firewall. Browser navigation still needs an explicit local-origin allowlist.
 
-Install `Node.js`, then run:
+The design plugin depends on `dsh-claude-artifacts` for its local Artifacts page. Its upstream project is [Open Artifacts](https://github.com/JimLiu/open-artifacts), formerly Baoyu Design. The image continues to use the revision pinned in `homelab-dsh-plugins` until that pin is deliberately updated and the image is rebuilt.
 
-```sh
-npx @deepseek-ai/dsh web
-```
+## Run the secure deployment
 
-The command starts the Web UI at `http://127.0.0.1:3080` by default and opens it in the default browser for a local launch. An SSH launch only prints the host URL because the SSH client or editor owns the local forwarded address. Pass `--no-open` to run the server without opening a browser. See [Web UI guide](docs/user/guide/index.md).
+Use the [English deployment guide](deploy/offline/README.md) or [한국어 배포 안내](deploy/offline/README.ko.md) to build and launch the Docker deployment. Do not use the upstream `npx @deepseek-ai/dsh web` command when you need these network and telemetry controls; that command does not use this repository's Docker policy.
 
-### Run from source
-
-To run from a repository checkout:
-
-```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
-pnpm install
-pnpm run build
-pnpm dsh web
-```
-
-`pnpm run build` prepares the repository artifacts. `pnpm dsh web` uses those built artifacts without rebuilding.
-
-## Community and support
-
-- Submit feedback or bug reports through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).
-- Add the [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic to your plugin repository for discoverability.
-- Join <a href="https://discord.gg/4MrtZUhpxg">DeepSeek Harness Discord community</a>.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Development
-
-Start with the [development guide](docs/development.md) and [architecture documentation](docs/architecture.md).
-
-`pnpm run dev:web` builds, serves, and rebuilds client bundles on source edits in one terminal, and `make help` lists the matching Make targets for Web and Desktop; the guide's application commands section owns the full table.
-
-For agents, follow [AGENTS.md](AGENTS.md).
-
-## Citation
-
-```bibtex
-@misc{deepseek-harness2026,
-  title={DeepSeek Harness: Everything is a Plugin},
-  author={DeepSeek-AI},
-  year={2026},
-  publisher={GitHub},
-  howpublished={\url{https://github.com/deepseek-ai/deepseek-harness}},
-}
-```
+For upstream DSH architecture and plugin development, see [architecture](docs/architecture.md), [your first plugin](docs/user/develop/basic/index.md), and [package and install a plugin](docs/user/develop/basic/publish.md).
 
 ## License
 
-[MIT](LICENSE)
-
-Third-party dependencies and their licenses are disclosed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+This repository is licensed under [MIT](LICENSE). Third-party dependencies and their licenses are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

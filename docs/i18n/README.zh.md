@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-本仓库的文档会被公司内外的人和 agent（智能体）阅读，因此范围内的每篇文档都以英文和简体中文维护。本页定义配对约定、检查、范围与排除规则；[translation-rules.md](translation-rules.zh.md) 定义如何翻译；[terminology.md](terminology.md) 是术语真源。agent 的日常工作遵循 [docs/AGENTS.md](../AGENTS.md) 中的轻量路径；扩展版 [.agents/skills/dsh-translate-docs](../../.agents/skills/dsh-translate-docs/SKILL.md) 工作流仅在用户显式调用时可用。
+本仓库的文档会被公司内外的人和 agent（智能体）阅读。配对范围内的文档以英文和简体中文维护，下方列出的明确例外则以英文和韩文维护。本页定义配对约定、检查、范围与排除规则；[translation-rules.md](translation-rules.zh.md) 定义如何翻译；[terminology.md](terminology.md) 是术语真源。agent 的日常工作遵循 [docs/AGENTS.md](../AGENTS.md) 中的轻量路径；扩展版 [.agents/skills/dsh-translate-docs](../../.agents/skills/dsh-translate-docs/SKILL.md) 工作流仅在用户显式调用时可用。
 
 <a id="the-pairing-contract"></a>
 
@@ -64,6 +64,7 @@
 - `docs/i18n/terminology.md` 与 [style-samples.md](style-samples.md)：二者本身即为中英对照文档。
 - [translation-prompt.md](translation-prompt.md)：自动翻译流水线的提示词模板；正文逐字进入模型请求，配对翻译会改变流水线行为。
 - [review-ownership/README.md](../../.github/review-ownership/README.md)：仓库内部审批策略，只以英文维护。
+- [根目录 README.md](../../README.md) 和 [README.ko.md](../../README.ko.md)：安全部署项目首页以英文和韩文维护，不提供中文对照。
 - [deploy/offline/README.md](../../deploy/offline/README.md) 和 [README.ko.md](../../deploy/offline/README.ko.md)：离线部署指南由部署维护者以英文和韩文维护，明确不生成中文对照。
 - `.agents/notes/archived/`：冻结的历史三文件配对。[`verify-archived-agent-notes`](../../scripts/verify-archived-agent-notes.ts) 校验其完整性和内容封存记录；翻译维护绝不能重写这些文件。
 

@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-This repo's documentation is read by people and agents both inside and outside the company, so every document in scope is maintained in English and Simplified Chinese. This page defines the pairing contract, checks, scope, and exclusions; [translation-rules.md](translation-rules.md) defines how to translate; [terminology.md](terminology.md) is the terminology source of truth. Routine agent work follows the lightweight path in [docs/AGENTS.md](../AGENTS.md); the extended [.agents/skills/dsh-translate-docs](../../.agents/skills/dsh-translate-docs/SKILL.md) workflow is available only through explicit user invocation.
+This repo's documentation is read by people and agents both inside and outside the company. Documents in the pairing scope are maintained in English and Simplified Chinese, with the explicit English/Korean README exceptions listed below. This page defines the pairing contract, checks, scope, and exclusions; [translation-rules.md](translation-rules.md) defines how to translate; [terminology.md](terminology.md) is the terminology source of truth. Routine agent work follows the lightweight path in [docs/AGENTS.md](../AGENTS.md); the extended [.agents/skills/dsh-translate-docs](../../.agents/skills/dsh-translate-docs/SKILL.md) workflow is available only through explicit user invocation.
 
 ## The pairing contract
 
@@ -62,6 +62,7 @@ Generated English sources omit the language switcher that ordinary authored sour
 - `docs/i18n/terminology.md` and [style-samples.md](style-samples.md) — both are bilingual by construction.
 - [translation-prompt.md](translation-prompt.md) — the automated pipeline's prompt template; its body is machine-consumed verbatim, so a paired translation would change pipeline behavior.
 - [review-ownership/README.md](../../.github/review-ownership/README.md) — repository-internal approval policy maintained in English only.
+- [root README.md](../../README.md) and [README.ko.md](../../README.ko.md) — the secure deployment landing pages are maintained in English and Korean, without a Chinese counterpart.
 - [deploy/offline/README.md](../../deploy/offline/README.md) and [README.ko.md](../../deploy/offline/README.ko.md) — offline deployment instructions are maintained in English and Korean by the deployment owner and intentionally have no generated Chinese counterpart.
 - `.agents/notes/archived/` — frozen historical triplets. [`verify-archived-agent-notes`](../../scripts/verify-archived-agent-notes.ts) validates their completeness and content seals; translation maintenance must never rewrite them.
 
