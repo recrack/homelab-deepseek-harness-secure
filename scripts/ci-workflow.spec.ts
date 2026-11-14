@@ -129,8 +129,6 @@ describe('CI workflow', () => {
     expect(blocking.sort()).toEqual([
       'node-24',
       'node-24-bench',
-      'node-24-consumers',
-      'node-24-coverage',
       'node-24-lint',
       'node-compat',
       'publisher-isolated',
@@ -144,7 +142,6 @@ describe('CI workflow', () => {
 
   it('retains aggregate diagnostics in required builds and protected publication', () => {
     for (const [file, name, command] of [
-      ['ci.yml', 'node-24-consumers', 'pnpm run check:ci:consumers'],
       ['ci-windows.yml', 'windows-build', 'pnpm run check:ci:windows-blocking'],
     ] as const) {
       const job = workflowJob(loadWorkflow('.github/workflows/' + file), name)
@@ -252,39 +249,17 @@ describe('CI workflow', () => {
     }
   })
 
-  it('omits Windows coverage while retaining Wine cleanup', () => {
+  it('omits PR consumer and coverage jobs while retaining Wine cleanup', () => {
+    const ci = loadWorkflow('.github/workflows/ci.yml')
     const windows = loadWorkflow('.github/workflows/ci-windows.yml')
     const wine = workflowJob(loadWorkflow('.github/workflows/ci-master.yml'), 'windows')
-    if (!isRecord(windows.jobs)) throw new TypeError('CI Windows must define jobs')
+    if (!isRecord(ci.jobs) || !isRecord(windows.jobs)) throw new TypeError('CI workflows must define jobs')
+    expect(ci.jobs['node-24-consumers']).toBeUndefined()
+    expect(workflowJob(ci, 'all-checks-passed').needs).not.toContain('node-24-consumers')
+    expect(ci.jobs['node-24-coverage']).toBeUndefined()
+    expect(workflowJob(ci, 'all-checks-passed').needs).not.toContain('node-24-coverage')
     expect(windows.jobs['windows-coverage']).toBeUndefined()
     expect(wine.steps).toContainEqual(expect.objectContaining({ name: 'Shut down wineserver', if: 'always()' }))
-  })
-
-  it.each([
-    ['node-24-coverage', 'ci.yml', 'Linux', 'LINUX', 'pnpm run check:ci:coverage'],
-  ])('reuses %s coverage timings only within its platform and runner pool', (jobName, file, platform, variable, command) => {
-    const job = workflowJob(loadWorkflow('.github/workflows/' + file), jobName)
-    if (!Array.isArray(job.steps)) throw new TypeError(`${jobName} must define steps`)
-    const steps = job.steps.filter(isRecord)
-    const checkout = steps.findIndex(step => step.uses === 'actions/checkout@v7.0.1')
-    const restore = steps.findIndex(step => step.name === 'Restore coverage duration history')
-    const coverage = steps.findIndex(step => step.run === command)
-    const save = steps.findIndex(step => step.name === 'Save coverage duration history')
-    const prefix = `coverage-times-${platform}-\${{ runner.environment }}-\${{ vars.DSH_CI_FAILOVER_${variable} || 'enterprise' }}-`
-    const key = prefix + '${{ github.run_id }}-${{ github.run_attempt }}'
-    expect(checkout).toBeGreaterThanOrEqual(0)
-    expect(restore).toBeGreaterThan(checkout)
-    expect(coverage).toBeGreaterThan(restore)
-    expect(save).toBeGreaterThan(coverage)
-    expect(steps[restore]).toMatchObject({
-      uses: 'actions/cache/restore@v6.1.0',
-      with: { path: '.coverage-times.json', key, 'restore-keys': `${prefix}\n` },
-    })
-    expect(steps[save]).toMatchObject({
-      uses: 'actions/cache/save@v6.1.0',
-      if: '${{ !cancelled() }}',
-      with: { path: '.coverage-times.json', key },
-    })
   })
 
   it('isolates every pnpm action setup destination per runner', () => {
@@ -315,7 +290,7 @@ describe('CI workflow', () => {
     }
   })
 
-  it.each(['node-24', 'node-24-coverage', 'node-24-consumers'])(
+  it.each(['node-24'])(
     '%s keeps tool and fixture temporary files under runner cleanup',
     (jobName) => {
       const job = workflowJob(loadWorkflow('.github/workflows/ci.yml'), jobName)
@@ -324,17 +299,9 @@ describe('CI workflow', () => {
         name: 'Use runner-owned temporary storage',
         run: [
           'echo "TMPDIR=${{ runner.temp }}" >> "$GITHUB_ENV"',
-          ...(jobName === 'node-24-consumers'
-            ? ['echo "PLAYWRIGHT_BROWSERS_PATH=${RUNNER_TEMP%/*}/ms-playwright" >> "$GITHUB_ENV"']
-            : []),
           '',
         ].join('\n'),
       })
-      if (jobName === 'node-24-consumers') {
-        const browserCache: unknown = job.steps.find(step => isRecord(step) && isRecord(step.with)
-          && step.with.path === '${{ env.PLAYWRIGHT_BROWSERS_PATH }}')
-        expect(browserCache).toMatchObject({ uses: 'actions/cache/restore@v6.1.0' })
-      }
       const store: unknown = job.steps.find(step => isRecord(step) && step.name === 'Configure pnpm store path')
       expect(store).toMatchObject({
         run: [
@@ -384,15 +351,13 @@ describe('CI workflow', () => {
       || !isRecord(windowsWorkflow.jobs['windows-native-tests'])
       || !isRecord(windowsWorkflow.jobs['windows-checks-passed'])
       || !isRecord(workflow.jobs['node-24'])
-      || !isRecord(workflow.jobs['node-24-coverage'])
       || !isRecord(workflow.jobs['node-24-lint'])
       || !isRecord(workflow.jobs['node-24-bench'])
-      || !isRecord(workflow.jobs['node-24-consumers'])
       || !isRecord(workflow.jobs['node-compat'])
       || !isRecord(workflow.jobs['all-checks-passed'])
       || !isRecord(masterWorkflow.jobs)
       || !isRecord(masterWorkflow.jobs['serial-windows'])) {
-      throw new TypeError('CI workflow must define node-24, node-24-coverage, node-24-lint, node-24-bench, node-24-consumers, node-compat, and all-checks-passed; CI Windows must define windows-publisher, windows-build, windows-native-tests, and windows-checks-passed; ci-master must define serial-windows')
+      throw new TypeError('CI workflow must define node-24, node-24-lint, node-24-bench, node-compat, and all-checks-passed; CI Windows must define windows-publisher, windows-build, windows-native-tests, and windows-checks-passed; ci-master must define serial-windows')
     }
 
     const windowsPublisher = windowsWorkflow.jobs['windows-publisher']
@@ -401,10 +366,8 @@ describe('CI workflow', () => {
     const windowsAggregate = windowsWorkflow.jobs['windows-checks-passed']
     const serialWindows = masterWorkflow.jobs['serial-windows']
     const node24 = workflow.jobs['node-24']
-    const node24Coverage = workflow.jobs['node-24-coverage']
     const node24Lint = workflow.jobs['node-24-lint']
     const node24Bench = workflow.jobs['node-24-bench']
-    const node24Consumers = workflow.jobs['node-24-consumers']
     const nodeCompat = workflow.jobs['node-compat']
     const aggregate = workflow.jobs['all-checks-passed']
     if (!Array.isArray(aggregate.needs) || !Array.isArray(windowsAggregate.needs)) {
@@ -542,7 +505,7 @@ describe('CI workflow', () => {
     expect(serialGate!.env).toMatchObject({ DSH_COVERAGE_TEST_TIMEOUT_MS: '90000' })
 
     expect(aggregate.needs).not.toContain('windows')
-    // Linux owns per-file coverage; Windows-specific evidence comes from the
+    // Linux owns the PR lanes; Windows-specific evidence comes from the
     // required build and native-test jobs. Observational diagnostics stay out.
     expect(windowsAggregate.needs).toEqual(['windows-publisher', 'windows-build', 'windows-native-tests'])
     expect(windowsAggregate.name).toBe('windows checks passed')
@@ -568,13 +531,13 @@ describe('CI workflow', () => {
     // Linux failover is a separate switch: the three enterprise Linux workers
     // and the verdict job resolve their pool through DSH_CI_FAILOVER_LINUX,
     // never the Windows switch.
-    for (const [jobName, job] of [['node-24', node24], ['node-24-coverage', node24Coverage], ['node-24-lint', node24Lint], ['node-24-consumers', node24Consumers]] as const) {
+    for (const [jobName, job] of [['node-24', node24], ['node-24-lint', node24Lint]] as const) {
       expect(typeof job['runs-on']).toBe('string')
       expect(job['runs-on'], `${jobName} runs-on must use the Linux failover switch`).toContain('DSH_CI_FAILOVER_LINUX')
       expect(job['runs-on'], `${jobName} runs-on must not use the Windows failover switch`).not.toContain('DSH_CI_FAILOVER_WINDOWS')
       expect(job['runs-on']).toContain('vm-backup')
       expect(evaluateRunsOn(job['runs-on'], { vars: { DSH_CI_FAILOVER_LINUX: 'blacksmith' } }))
-        .toBe(`blacksmith-${jobName === 'node-24' || jobName === 'node-24-lint' ? 8 : 16}vcpu-ubuntu-2404`)
+        .toBe('blacksmith-8vcpu-ubuntu-2404')
       expect(evaluateRunsOn(job['runs-on'], { vars: { DSH_CI_FAILOVER_LINUX: 'github' } }))
         .toBe('ubuntu-24.04')
     }
@@ -618,7 +581,7 @@ describe('CI workflow', () => {
     // a red aggregate does not keep burning runner time on the remaining
     // gates. Removing the flag silently reverts to running every independent
     // gate to completion.
-    for (const [jobName, job] of [['node-24', node24], ['node-24-coverage', node24Coverage], ['node-24-consumers', node24Consumers], ['node-compat', nodeCompat]] as const) {
+    for (const [jobName, job] of [['node-24', node24], ['node-compat', nodeCompat]] as const) {
       expect(job.env, `${jobName} must enable fail-fast`).toMatchObject({ DSH_GATE_FAIL_FAST: '1' })
     }
 
@@ -631,21 +594,15 @@ describe('CI workflow', () => {
     expect(observational?.env).toMatchObject({ DSH_GATE_FAIL_FAST: '' })
   })
 
-  it('runs the darwin unit parity inventory at the coverage lanes\' test budget', () => {
-    const coverage = workflowJob(loadWorkflow('.github/workflows/ci.yml'), 'node-24-coverage')
-    if (!isRecord(coverage.env) || typeof coverage.env.DSH_COVERAGE_TEST_TIMEOUT_MS !== 'string') {
-      throw new TypeError('node-24-coverage must grant DSH_COVERAGE_TEST_TIMEOUT_MS')
-    }
+  it('gives the darwin unit parity inventory its shared-runner test budget', () => {
     const unitDarwin = workflowJob(loadWorkflow('.github/workflows/sandbox.yml'), 'unit-darwin')
     if (!Array.isArray(unitDarwin.steps)) throw new TypeError('unit-darwin job must define steps')
     const unit = unitDarwin.steps.filter(isRecord).find(step => step.name === 'Unit tests (darwin parity)')
-    // The whole unit inventory on a shared macos-latest runner pays the same
-    // scheduling delay the coverage lanes absorb; the ci-unit aggregate is the
-    // `pnpm run test` path that consumes the variable, and the value is the
-    // coverage lane's so the two budget classes cannot drift apart.
+    // The whole unit inventory on a shared macos-latest runner can exceed the
+    // default budget; the `pnpm run test` path consumes this timeout.
     expect(unit).toMatchObject({
       run: 'pnpm run check:ci:unit',
-      env: { DSH_COVERAGE_TEST_TIMEOUT_MS: coverage.env.DSH_COVERAGE_TEST_TIMEOUT_MS },
+      env: { DSH_COVERAGE_TEST_TIMEOUT_MS: '90000' },
     })
   })
 
@@ -880,8 +837,6 @@ describe('CI workflow', () => {
     const masterWorkflow = loadWorkflow('.github/workflows/ci-master.yml')
     const redirectLanes = [
       [prWorkflow, 'node-24'],
-      [prWorkflow, 'node-24-coverage'],
-      [prWorkflow, 'node-24-consumers'],
       [masterWorkflow, 'serial-linux-selfhosted'],
     ] as const
     for (const [workflow, jobKey] of redirectLanes) {
@@ -1116,8 +1071,6 @@ describe('bubblewrap preparation script', () => {
   // rows, so neither carries cache steps.
   const hostedOnly = "vars.DSH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]'"
   const cachedJobs = new Map<string, string | undefined>([
-    ['ci.yml:node-24-coverage', hostedOnly],
-    ['ci.yml:node-24-consumers', hostedOnly],
     ['ci.yml:node-compat', hostedOnly],
   ])
 
