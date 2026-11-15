@@ -54,8 +54,8 @@ export const coverageExemptHeavySuites: readonly CoverageExemptSuite[] = [
   { filter: 'scripts/persistence-epoch-header.spec.ts', exclude: 'scripts/persistence-epoch-header.spec.ts' },
   { filter: 'scripts/gen-client-catalog.spec.ts', exclude: 'scripts/gen-client-catalog.spec.ts' },
   // Built-artifact proof. Packer/runtime src is threshold-excluded, and the
-  // suite self-skips on unbuilt checkouts; the serial-windows complete
-  // reference still starts this uninstrumented gate after its build gate, so
+  // suite self-skips on unbuilt checkouts; the post-merge Linux suite starts
+  // this uninstrumented gate after its build gate, so
   // the assertions execute against complete real artifacts there.
   {
     filter: 'packages/experimental/webworker-packer/tests/image-loadable.spec.ts',

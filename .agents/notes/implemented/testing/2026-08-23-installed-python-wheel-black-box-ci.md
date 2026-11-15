@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-The Python SDK unit suite drives fake peers, while the packaged-runtime workflow can run the source SDK against a newly built executable before either Python distribution exists. Its clean virtual environment exercises only the default and MCP cases, and required pull-request CI builds only Linux x64. A source checkout, editable install, mismatched SDK/runtime pair, broken native wheel, platform-specific closure, or real-provider integration can therefore escape the evidence that blocks a merge.
+The Python SDK unit suite drives fake peers, while installed-wheel checks exercise the runtime that users receive. A source checkout, editable install, mismatched SDK/runtime pair, broken native wheel, or platform-specific closure can therefore escape the keyless runtime evidence unless CI installs the published distributions into a clean environment.
 
 ## Decision
 
@@ -20,15 +20,13 @@ Every target runs the complete packaged-runtime scenario set after installation.
 
 Linux additionally retains its manylinux 2.28 clean-install smoke and GLIBC checks. macOS retains deployment-target and native helper checks. These platform constraints supplement the common black-box behavior rather than substituting for it.
 
-### Real DeepSeek API
+### Provider isolation
 
-Trusted pull requests and master pushes run a second installed-wheel check on each selected native target with `DEEPSEEK_API_KEY_EXTERNAL`, mapped only into a preflight and the live test step. The preflight fails when the secret is empty, so the provider suite cannot self-skip to green. The test starts the public SDK against `https://api.deepseek.com`, asks the model to write an exact sentinel file through the platform shell, asks a second turn in the same session to read it, and verifies the external line content, final responses, completed turn reasons, model-requested tool calls, and the existence and Zstandard framing of its session log. Decoded record content and completed-turn durability are deterministic keyless obligations owned by the restart snapshot rather than inferred from compressed live-provider bytes.
-
-Fork and Dependabot pull requests never receive the repository secret. Their native jobs run the complete keyless path and skip both secret-bearing steps; `pull_request_target` is forbidden because it would execute untrusted code with the key.
+GitHub Actions CI runs only keyless Python SDK and installed-wheel scenarios. The runtime harness uses a local SSE model, so it needs no provider credential or live API request. Real-provider checks remain opt-in local diagnostics and are not part of the merge or post-merge workflow.
 
 ### Required targets
 
-The pull-request `python-runtime` job in CI Python calls the reusable builder for Linux x64 and Windows x64; master pushes select Linux arm64 and both macOS architectures under the [master-only platform policy](../../../../.github/workflows/ci-master.yml). Its aggregate result is a dependency of CI Python's required verdict, `python checks passed`, so a failed, cancelled, or missing native carrier blocks the required verdict. The [sdk-runtime README](../../../../python/sdk-runtime/README.md) owns the Windows target and its PowerShell-specific minimal snapshot.
+After a master push, `ci-python.yml` runs the keyless SDK suite and installed-wheel validation on Linux x64; `ci-master.yml` adds Linux ARM64 and both macOS architectures. No Windows runtime tests run in GitHub Actions. The Python release workflow retains the Windows x64 target, and the [sdk-runtime README](../../../../python/sdk-runtime/README.md) owns its PowerShell-specific behavior and snapshot.
 
 ## Existing decisions and supersession
 
@@ -36,14 +34,14 @@ This decision supersedes the single-target topology in the archived [required Py
 
 ## Alternatives considered
 
-**Keep Linux x64 as the only required carrier.** Rejected because native addons, executable construction, wheel tags, and helper files differ across the five published targets. Release-time discovery is too late for an artifact that every Python SDK installation selects by platform.
+**Validate only Linux x64.** Rejected for automated post-merge checks because native addons, executable construction, wheel tags, and helper files differ across the other supported release targets. Windows runtime tests are omitted to keep GitHub Actions within its chosen schedule; release builds retain the Windows target.
 
 **Run full behavior before wheel construction and keep two small installed smokes.** Rejected because that proves the executable against source imports, then proves too little through the distribution users install. The clean installed environment is the stronger common location for the same scenarios.
 
-**Use keyless model emulation only.** Rejected because a local SSE endpoint cannot prove authentication, request compatibility, streaming, tool-call interpretation, or a complete turn against the real provider.
+**Use a live provider in GitHub Actions.** Rejected because CI must remain credential-free and keyless runtime checks already prove installed-wheel behavior deterministically.
 
-**Expose the key to forked pull requests through `pull_request_target`.** Rejected because arbitrary fork code could exfiltrate the repository secret. Missing credentialed evidence on an untrusted ref is explicit and security-preserving; trusted heads and post-merge provider CI retain the live signal.
+**Run the long installed-wheel matrix before merge.** Rejected because it delays pull-request merges; the keyless matrix runs after merge on master.
 
 ## Consequences
 
-Every pull request pays for two native executable and wheel builds plus deterministic installed-artifact scenarios. Trusted same-repository pull requests also pay for one two-turn DeepSeek task per target. In exchange, the required result describes the files Python users install, proves the selected carriers before merge, and cannot pass by importing the checkout or silently skipping the real provider.
+Master pushes pay for four keyless native executable and wheel builds plus deterministic installed-artifact scenarios. Failures are reported after merge, and Windows receives no automated runtime test signal in GitHub Actions. In exchange, the workflow validates the installed distributions on Linux x64, Linux ARM64, macOS ARM64, and macOS x64 without provider credentials.

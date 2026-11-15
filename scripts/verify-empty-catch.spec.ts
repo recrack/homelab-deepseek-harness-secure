@@ -263,7 +263,7 @@ describe('empty catch source discovery', () => {
     expect(() => verifyEmptyCatch(root)).toThrow(/found no catch clause/u)
   })
 
-  // Creating file symlinks requires privileges that Windows CI does not guarantee.
+  // Creating file symlinks requires privileges not guaranteed on Windows hosts.
   it.skipIf(process.platform === 'win32')('rejects a source symlink', () => {
     const root = fixture()
     write(root, 'target.txt', broken)

@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Run the blocking Windows gates (workspace build, production site) with real
-# win-x64 Node.js under Wine — the same script the master-only `windows` job
-# in ci-master.yml executes and the optional local gate `pnpm run check:windows-wine`
-# wraps. Owning rationale and fidelity limits:
-# .agents/notes/implemented/process/2026-08-08-native-windows-pull-request-ci.md
+# Run the optional local Windows gates (workspace build, production site) with
+# real win-x64 Node.js under Wine. `pnpm run check:windows-wine` wraps this
+# diagnostic; CI does not schedule it. Historical rationale and fidelity limits:
+# .agents/notes/archived/process/2026-08-08-native-windows-pull-request-ci.md
 #
 # The working tree is never mutated: tracked plus untracked-unignored files
 # are snapshotted into a scratch directory, the Wine-specific pnpm overrides

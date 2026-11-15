@@ -6,8 +6,8 @@ import { testProfileResolution } from './profiles/headless/tests/profile-resolut
 
 /**
  * Keyless source-launch and profile-resolution checks through the production
- * tsx ESM-only entry. The Node compatibility matrix runs this file without a
- * build; source tool execution with native/generated dependencies belongs to
+ * tsx ESM-only entry. Linux CI runs this file without a build; source tool
+ * execution with native/generated dependencies belongs to
  * the build-backed source-tool suite.
  */
 

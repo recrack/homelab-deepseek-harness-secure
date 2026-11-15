@@ -1,6 +1,7 @@
 # Agent Note: Windows Python runtime CI stays on GitHub-hosted Windows
 
 Status: implemented
+Archived: 2026-11-15
 
 ## Problem
 

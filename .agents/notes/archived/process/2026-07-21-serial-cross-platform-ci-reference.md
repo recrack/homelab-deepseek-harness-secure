@@ -1,6 +1,7 @@
 # Agent Note: Serial cross-platform CI reference
 
 Status: implemented
+Archived: 2026-11-15
 
 ## Problem
 

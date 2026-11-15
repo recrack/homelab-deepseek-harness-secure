@@ -119,7 +119,7 @@ Generation construction is startup or update work, not resolve work, and its abs
 
 One-off local measurements taken during implementation ran built JavaScript under plain Node in fresh processes and compared it with a process that installed no hook. The measurement script and results are not committed, and these figures are not a benchmark or CI budget. Seven alternating rounds covered outside, profile-local, and fallback imports through dynamic import, `import.meta.resolve`, require, and `require.resolve`. Across Node 22.19, 24.18, and 26.8, the largest positive hot-path median was 4.5%. On Node 24.18, a 256-package cold workload regressed by at most 11.2% and generation construction took 16.027 ms median; the 32-package local `require.resolve` case added 1.033 ms across the batch (+34.7%) from fixed startup cost.
 
-Behavior tests exercise root order, transitive and peer dependencies, local and external precedence, exports and subpath errors, conditions, and explicit CommonJS options. The Node compatibility matrix runs the resolver, service, and bootstrap specifications across the supported internal-loader variants. Worker tests verify environment-data publication and bootstrap installation with mocked thread and native-loader interfaces; they do not launch a built Worker. Generation tests prove failed construction does not publish partial state and successful replacement is atomic.
+Behavior tests exercise root order, transitive and peer dependencies, local and external precedence, exports and subpath errors, conditions, and explicit CommonJS options. The Linux CI source-compatibility smoke runs the resolver, service, and bootstrap specifications across the supported internal-loader variants. Worker tests verify environment-data publication and bootstrap installation with mocked thread and native-loader interfaces; they do not launch a built Worker. Generation tests prove failed construction does not publish partial state and successful replacement is atomic.
 
 ## Alternatives considered
 
@@ -145,7 +145,7 @@ Behavior tests exercise root order, transitive and peer dependencies, local and 
 - Pkg and Electron carriers select runtime resolution; Electron executes its Host in Node mode from the ASAR-backed dsh tree while native executable entries remain unpacked.
 - ESM and CommonJS adapters share one router and delegate final resolution to Node without `module.registerHooks` or `_findPath` replacement.
 - Production metadata lookup does not record Loader import results or wrap Entry, registry, tree, or HMR methods.
-- The Node compatibility matrix runs main-thread resolver specifications across supported loader interfaces; service and bootstrap specifications cover Worker environment-data and installation interfaces without launching a built Worker.
+- The Linux CI source-compatibility smoke runs main-thread resolver specifications across supported loader interfaces; service and bootstrap specifications cover Worker environment-data and installation interfaces without launching a built Worker.
 - One-off built plain-Node measurements produced the hot and cold observations above against no-hook Node; the script and results are not committed evidence.
 
 ## Consequences

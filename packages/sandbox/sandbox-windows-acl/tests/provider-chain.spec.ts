@@ -1,10 +1,9 @@
 /**
  * The win32 chain's argv contract, denial dialect, and runner-failure rules,
  * exercised through the REAL LocalSandboxProvider.confine() with an injected
- * platform and runner argv prefix. Platform-independent assertions: they run
- * in every CI lane (Windows included, where sandbox-local's own POSIX-only
- * suites are excluded) — the end-to-end runner behavior lives in
- * runner.spec.ts on win32 hosts.
+ * platform and runner argv prefix. Linux CI runs these platform-independent
+ * assertions with the injected Windows platform. End-to-end runner behavior
+ * lives in runner.spec.ts on native Windows hosts.
  */
 
 import { tmpdir } from 'node:os'
