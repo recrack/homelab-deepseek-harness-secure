@@ -21,7 +21,7 @@ UI는 `http://127.0.0.1:3081`에서 열립니다. 실행기는 제어 터미널�
 
 ## 플러그인 선택
 
-선택 가능한 플러그인은 [homelab-dsh-plugins](https://github.com/recrack/homelab-dsh-plugins)에 있습니다. 새 상태 디렉터리에는 선택 플러그인이 자동 설치되지 않습니다. `--plugin <ID>`를 반복해 고른 플러그인을 Web 프로필에 추가합니다. 선택은 상태 디렉터리에 유지되어 이후 실행에도 활성 상태로 남습니다.
+선택 가능한 플러그인 패키지는 [homelab-dsh-plugins](https://github.com/recrack/homelab-dsh-plugins)의 고정 커밋에서 가져와 Docker 이미지 빌드 시 포함합니다. 이 실행기의 `--plugin <ID>`는 이미지에 포함된 패키지를 지속 Web 프로필에 활성화합니다. DSH Plugin Manager UI와 도구는 꺼져 있으므로 별도 UI 설치는 지원하지 않으며, 실행 중 플러그인 코드를 내려받지도 않습니다. 새 상태 디렉터리에서는 선택 플러그인이 자동 활성화되지 않고, 한 번 선택한 플러그인은 이후 실행에도 유지됩니다. 저장소 간 관계는 [homelab-dsh-plugins 설명](https://github.com/recrack/homelab-dsh-plugins#integration-with-homelab-deepseek-harness-secure)을 참고하세요.
 
 ```sh
 python3 deploy/offline/run.py --workspace /absolute/project --state /absolute/private-dsh-state --model MODEL_ID --base-url http://127.0.0.1:18080/v1 --plugin dsh-context --plugin dsh-claude-artifacts --plugin dsh-claude-design --plugin dsh-crew
@@ -36,6 +36,28 @@ python3 deploy/offline/run.py --workspace /absolute/project --state /absolute/pr
 ```
 
 루프백 주소는 DSH 컨테이너를 가리킵니다. 브라우저 페이지가 하위 리소스를 요청할 수 있지만 방화벽은 지정한 주소와 포트만 허용합니다. 공개 웹사이트는 승인된 Web 수집기를 사용하세요.
+
+### 이미지 빌드와 프로필 활성화
+
+플러그인 저장소는 검토한 소스 스냅샷과 로컬 보완을 관리하고, secure 저장소는 이미지를 만들고 허용된 ID를 지속 프로필에 활성화합니다. 실행 시 플러그인 저장소를 clone하거나 패키지를 빌드하지 않습니다.
+
+```mermaid
+flowchart LR
+    upstream["상위 플러그인 프로젝트"] -->|"검토 후 버전 고정"| catalog["homelab-dsh-plugins<br/>plugins.json과 패키지 스냅샷"]
+    catalog -->|"이미지 빌드에서 고정 커밋을 가져와 build.sh 실행"| image["dsh-offline 이미지<br/>미리 빌드한 로컬 패키지"]
+    select["run.py --plugin ID"] -->|"명시적 선택"| setup["entrypoint와 profile_plugins.py"]
+    image --> setup
+    setup -->|"로컬 의존성과 패키지 링크"| profile["지속 상태의 $DSH_HOME/profiles/web"]
+    setup -->|"bundle 활성화"| bundles["dsh.profile.bundles"]
+    setup -->|"활성 플러그인 ID"| presets["prepare-presets.mjs<br/>생성된 Cordis 오버레이"]
+    profile --> dsh["dsh --profile web<br/>Cordis가 조합한 프로필을 로드"]
+    bundles --> dsh
+    presets --> dsh
+```
+
+`run.py --plugin <ID>`는 이미지에 이미 들어 있는 패키지만 선택합니다. 시작할 때 [profile_plugins.py](profile_plugins.py)가 선택된 패키지를 로컬 의존성으로 기록하고 패키지 경로를 지속 Web 프로필에 연결하며 기존 선택을 보존합니다. bundle 플러그인은 `dsh.profile.bundles`에 추가되고, `dsh-browser`는 생성된 오버레이를 통해 기본 Web preset에 추가됩니다. 일반 Cordis 로더가 프로필을 실행하며 플러그인 코드는 DSH 컨테이너 안에서 동작하고 같은 방화벽 정책을 따릅니다.
+
+플러그인을 새로 추가할 때는 두 저장소를 모두 수정해야 합니다. 플러그인 저장소에 검토한 스냅샷과 빌드 요건을 추가하고, secure 저장소에서 [이미지 패키지 링크](Dockerfile), [허용 ID 목록](run.py), [프로필 패키지와 bundle 매핑](profile_plugins.py)을 추가합니다. preset 방식이면 [prepare-presets.mjs](prepare-presets.mjs)도 갱신해야 합니다. 플러그인 저장소의 `plugins.json`만 수정해도 실행기가 해당 플러그인을 자동으로 찾지는 않습니다. 이미지에 포함되도록 다시 빌드한 뒤 `--plugin <ID>`로 선택합니다.
 
 일반 DSH 플러그인 개발은 [첫 플러그인 만들기](../../docs/user/develop/basic/index.md)와 [플러그인 패키징 및 설치](../../docs/user/develop/basic/publish.md)를 참고하세요. 검색 또는 가져오기 백엔드는 [dsh-web provider 추가](../../packages/web/web/README.md#adding-a-provider) 방식으로 확장할 수 있습니다. 이 배포는 Plugin Manager를 끄고, `deploy/offline/profile_plugins.py`를 통해 사용자가 고른 카탈로그 항목만 프로필에 설치합니다.
 

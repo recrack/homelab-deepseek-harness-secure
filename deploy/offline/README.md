@@ -19,7 +19,7 @@ The UI is available at `http://127.0.0.1:3081`. The launcher prints an approval 
 
 `--profile headless` disables the UI. `--port`, `--collector-port`, `--context-window`, and `--max-tokens` configure local listeners and model limits. `--model-patch` accepts a trusted Cordis overlay inside the workspace; it can change plugin and browser policy settings, while the container firewall remains fixed.
 
-Optional plugins come from [homelab-dsh-plugins](https://github.com/recrack/homelab-dsh-plugins). Choose plugin IDs explicitly; the first selection installs them into the persistent Web profile, and those selections remain active on later launches. For example:
+Optional plugin packages are built into the image from a pinned [homelab-dsh-plugins](https://github.com/recrack/homelab-dsh-plugins) commit. This deployment's `--plugin <id>` flag activates an image-included package in the persistent Web profile; it is not the DSH Plugin Manager, whose UI and tool are disabled here. Selections remain active on later launches. See [plugin build and activation](#build-and-activation) for how the two repositories work together. For example:
 
 ```sh
 python3 deploy/offline/run.py --workspace /absolute/project --state /absolute/private-dsh-state --model MODEL_ID --base-url http://127.0.0.1:18080/v1 --plugin dsh-context --plugin dsh-claude-artifacts --plugin dsh-claude-design --plugin dsh-crew
@@ -35,9 +35,31 @@ python3 deploy/offline/run.py --workspace /absolute/project --state /absolute/pr
 
 Loopback addresses refer to the DSH container. A browser page can still request its subresources, but the firewall permits only the configured addresses and ports. Use the approved Web collector for public websites.
 
-## Installed DSH plugins
+## Optional DSH plugins
 
-The secure image fetches plugin packages from the pinned commit in `homelab-dsh-plugins` at build time. It does not contact that repository when DSH starts. `--plugin <id>` installs and activates only the requested package; repeating the flag selects multiple packages. The launcher records these packages in the persistent Web profile and keeps them installed on later launches.
+### Build and activation
+
+[homelab-dsh-plugins](https://github.com/recrack/homelab-dsh-plugins) owns the reviewed package snapshots and local hardening. The [Dockerfile](Dockerfile) fetches its pinned commit and builds the packages into the image; the launcher does not clone plugin sources when DSH starts.
+
+```mermaid
+flowchart LR
+  upstream["Upstream plugin projects"] -->|"reviewed and pinned"| catalog["homelab-dsh-plugins<br/>plugins.json and package snapshots"]
+  catalog -->|"Dockerfile fetches commit and runs build.sh"| image["dsh-offline image<br/>prebuilt local package roots"]
+  select["run.py --plugin ID"] -->|"explicit selection"| setup["entrypoint and profile_plugins.py"]
+  image --> setup
+  setup -->|"local dependencies and package links"| profile["persistent $DSH_HOME/profiles/web"]
+  setup -->|"bundle activation"| bundles["dsh.profile.bundles"]
+  setup -->|"active plugin IDs"| presets["prepare-presets.mjs<br/>generated Cordis overlay"]
+  profile --> dsh["dsh --profile web<br/>Cordis loads the composed profile"]
+  bundles --> dsh
+  presets --> dsh
+```
+
+`run.py --plugin <id>` selects packages already present in the image; it does not download or build a package. At startup, [profile_plugins.py](profile_plugins.py) records selected packages as local dependencies, links their package roots into the persistent Web profile, and preserves existing selections. Bundle entries are added to `dsh.profile.bundles`; `dsh-browser` is added to the shipped Web presets through the generated overlay. The normal Cordis loader then loads the profile.
+
+Selected plugin code runs inside the DSH container and follows the container network policy described below. Plugins do not receive separate network access.
+
+The plugin repository's [`plugins.json`](https://github.com/recrack/homelab-dsh-plugins/blob/master/plugins.json) records upstream revisions and activation types; it does not populate the secure launcher's allowlist. To add a plugin, add its reviewed snapshot and build requirements to `homelab-dsh-plugins`, then update this repository's [image package links](Dockerfile), [launcher ID list](run.py), and [persistent profile package and bundle mappings](profile_plugins.py). Update [prepare-presets.mjs](prepare-presets.mjs) when the plugin is activated through Web presets. Rebuild the image to include the package, then select it with `--plugin <id>`; the Plugin Manager UI and tool are not install paths in this deployment.
 
 The `dsh-context` snapshot keeps its context panels and blocks its automatic catalog, balance, and recommendation requests. The Baoyu plugins provide the local Artifacts page and design canvas. DSH Crew requires the running DSH hub and uses the selected local model for both worker tiers; it cannot fall back to a standalone DeepSeek runtime. The multimodal vision and image-generation providers are disabled.
 
