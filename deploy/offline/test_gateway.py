@@ -11,7 +11,8 @@ from unittest.mock import MagicMock, patch
 import run as launcher
 import unittest
 
-from model_gateway import make_server, upstream_address
+from model_gateway import make_server, make_unix_server, upstream_address
+from model_socket_proxy import make_proxy_server
 
 
 class GatewayTests(unittest.TestCase):
@@ -80,6 +81,32 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual(response.read(), b"data: [DONE]\n\n")
         connection.close()
 
+    def test_unix_socket_relay_streams_through_loopback_proxy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            socket_path = Path(directory) / "model.sock"
+            gateway = make_unix_server(socket_path, f"http://127.0.0.1:{self.upstream.server_port}/v1", 32)
+            proxy = make_proxy_server(socket_path, 0)
+            for server in (gateway, proxy):
+                threading.Thread(target=server.serve_forever, daemon=True).start()
+            try:
+                connection = http.client.HTTPConnection("127.0.0.1", proxy.server_address[1], timeout=3)
+                connection.request("GET", "/v1/models")
+                response = connection.getresponse()
+                self.assertEqual((response.status, response.read()), (200, b'{"data":[]}'))
+                connection.close()
+
+                connection = http.client.HTTPConnection("127.0.0.1", proxy.server_address[1], timeout=3)
+                connection.request("POST", "/v1/chat/completions", "{}", {"Authorization": "secret", "Cookie": "secret"})
+                response = connection.getresponse()
+                self.assertEqual((response.status, response.read()), (200, b"data: first\n\ndata: [DONE]\n\n"))
+                self.assertNotIn("Authorization", self.received[-1])
+                self.assertNotIn("Cookie", self.received[-1])
+                connection.close()
+            finally:
+                for server in (proxy, gateway):
+                    server.shutdown()
+                    server.server_close()
+
     def test_redirect_is_not_followed(self):
         self.upstream.redirect = True
         self.assertEqual(self.request("GET", "/v1/models")[0], 502)
@@ -138,22 +165,78 @@ class LauncherTests(unittest.TestCase):
             server = MagicMock(server_port=19000)
             child = MagicMock()
             child.wait.side_effect = [KeyboardInterrupt, 0]
+            def bind_unix_socket(path, *_args):
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as gateway_socket:
+                    gateway_socket.bind(str(path))
+                return server
+
             argv = ["run.py", "--workspace", str(workspace), "--state", directory + "/state",
                     "--model", "local", "--base-url", "http://127.0.0.1:18080/v1", "--approval-file", str(approval_file),
-                    "--profile", "headless", "--search", "off", "--model-patch", str(model_patch), "test task"]
-            with patch("sys.argv", argv), patch.object(launcher, "docker", side_effect=docker), patch.object(launcher, "make_server", return_value=server), patch.object(launcher.subprocess, "Popen", return_value=child) as launch, patch.object(launcher.subprocess, "run") as stop, patch.object(launcher.platform, "system", return_value="Linux"), patch.object(launcher.os, "getuid", return_value=1000):
+                    "--profile", "headless", "--search", "off", "--model-patch", str(model_patch),
+                    "--model-gateway-mode", "unix", "test task"]
+            with patch("sys.argv", argv), patch.object(launcher, "docker", side_effect=docker), patch.object(launcher, "make_unix_server", side_effect=bind_unix_socket), patch.object(launcher.subprocess, "Popen", return_value=child) as launch, patch.object(launcher.subprocess, "run") as stop, patch.object(launcher.platform, "system", return_value="Linux"), patch.object(launcher.os, "getuid", return_value=1000):
                 self.assertEqual(launcher.main(), 130)
                 self.assertEqual(launch.call_args.args[0][-4:], ["headless", "--patch", str(model_patch.resolve()), "test task"])
                 self.assertIn("DSH_OFFLINE_SELECTED_PLUGINS=[]", launch.call_args.args[0])
                 self.assertEqual(len(stop.call_args_list), 2)
                 self.assertTrue(stop.call_args_list[-1].args[0][-1].endswith("-collector"))
                 collector_run = next(call for call in calls if call[:2] == ("run", "--detach"))
+                self.assertIn("127.0.0.1:3083:8081", collector_run)
                 self.assertNotIn("--mount", collector_run)
                 self.assertIn("CONTROL_TOKEN=", " ".join(collector_run))
+                command = launch.call_args.args[0]
+                self.assertIn("MODEL_GATEWAY_MODE=unix", command)
+                self.assertIn("DSH_MODEL_GATEWAY_SOCKET=/run/dsh-model/model.sock", command)
+                self.assertIn("DSH_NETWORK_GATEWAY_HOST=172.20.0.1", command)
+                self.assertIn("DSH_MODEL_PROXY_PORT=18081", command)
+                self.assertTrue(any("target=/run/dsh-model,readonly" in item for item in command))
+                self.assertTrue(any("target=/opt/dsh/deploy/offline/entrypoint.sh,readonly" in item for item in command))
+                self.assertTrue(any("target=/opt/dsh/deploy/offline/model_socket_proxy.py,readonly" in item for item in command))
 
             server.shutdown.assert_called_once()
             server.server_close.assert_called_once()
             self.assertEqual(calls[-1][:2], ("network", "rm"))
+
+
+    def test_public_url_environment_override_and_web_flags_follow_separator(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory) / "project"
+            workspace.mkdir()
+            calls = []
+
+            def docker(*args, **kwargs):
+                calls.append(args)
+                result = MagicMock()
+                result.stdout = '[{"IPAM":{"Config":[{"Gateway":"172.20.0.1"}]}}]'
+                if args[0] == "inspect":
+                    network_name = args[1].removesuffix("-collector")
+                    result.stdout = '[{"NetworkSettings":{"Networks":{"' + network_name + '":{"IPAddress":"172.20.0.2"}}}}]'
+                return result
+
+            server = MagicMock(server_port=19000)
+            child = MagicMock()
+            child.wait.return_value = 0
+            public_url = "https://family.example/workspace/"
+            trusted_host = "family.example"
+            argv = ["run.py", "--workspace", str(workspace), "--state", directory + "/state",
+                    "--model", "local", "--base-url", "http://127.0.0.1:18080/v1", "--search", "off",
+                    "--approval-file", directory + "/approval-url", "--profile", "web", "--",
+                    "--trusted-host", trusted_host, "--no-open"]
+            with patch("sys.argv", argv), patch.dict(os.environ, {"DSH_PUBLIC_URL": public_url}), patch.object(launcher, "docker", side_effect=docker), patch.object(launcher, "make_server", return_value=server), patch.object(launcher.subprocess, "Popen", return_value=child) as launch, patch.object(launcher.subprocess, "run"), patch.object(launcher.platform, "system", return_value="Linux"), patch.object(launcher.os, "getuid", return_value=1000):
+                self.assertEqual(launcher.main(), 0)
+
+            command = launch.call_args.args[0]
+            self.assertEqual(command[-4:], ["web", "--trusted-host", trusted_host, "--no-open"])
+            self.assertIn("DSH_PUBLIC_URL=" + public_url, command)
+            for filename in ("cordis.patch.yml", "prepare-presets.mjs", "hermes.patch.yml"):
+                self.assertIn(
+                    f"type=bind,source={Path(launcher.__file__).resolve().parent / filename},target=/opt/dsh/deploy/offline/{filename},readonly",
+                    command,
+                )
+            self.assertNotIn("--", command)
+            self.assertNotIn("--public-url", command)
+            server.shutdown.assert_called_once()
+            server.server_close.assert_called_once()
 
 
     def test_optional_hermes_volume_mounts_read_only_and_loader_patch_is_enabled(self):

@@ -66,6 +66,8 @@
               fetchTimeoutMs: 370000
           - id: dsh-browser
             name: /opt/homelab-dsh-plugins/packages/dsh-browser/lib/index.js
+            isolate:
+              zsevenBrowserDriver: true
             disabled: !!js JSON.parse(process.env.DSH_OFFLINE_ACTIVE_PLUGINS || '[]').includes('dsh-browser') === false
             config:
               allowedOrigins: !!js JSON.parse(process.env.DSH_BROWSER_ALLOWED_ORIGINS || '[]')

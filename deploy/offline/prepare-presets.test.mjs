@@ -5,6 +5,14 @@ import { presetPatches } from './prepare-presets.mjs';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 
+test('offline presets keep Plugin Manager tools disabled without a Host provider', async () => {
+  const patches = await presetPatches();
+  for (const patch of patches) {
+    const pluginManagerTool = patch.config.plugins.find(row => row.id === 'tool-plugin-manager');
+    assert.equal(pluginManagerTool?.disabled, true, patch.id);
+  }
+});
+
 test('browser tools are only mounted for a selected plugin', async () => {
   const requireInclude = createRequire(new URL('../../vendor/include/package.json', import.meta.url));
   const { parseEntryYaml } = requireInclude('./lib/index.js');
@@ -16,6 +24,7 @@ test('browser tools are only mounted for a selected plugin', async () => {
   const local = (await presetPatches(['dsh-browser'])).find(row => row.id === 'preset-standard').config.plugins;
   const browser = local.find(row => row.id === 'dsh-browser');
   assert.equal(browser.name, '/opt/homelab-dsh-plugins/packages/dsh-browser/lib/index.js');
+  assert.deepEqual(browser.isolate, { zsevenBrowserDriver: true });
   assert.deepEqual(browser.config.allowedOrigins, []);
   for (const row of local.filter(row => !['tool-web', 'dsh-browser'].includes(row.id))) {
     const original = shipped.find(candidate => candidate.id === row.id);
@@ -35,7 +44,9 @@ test('historical PTC and Cordis presets keep tools and wait for external approva
     assert.equal(web.config.searchTimeoutMs, 370000);
     assert.equal(web.config.fetchTimeoutMs, 370000);
     assert.deepEqual(rows.find(row => row.id === 'tool-pwsh').disabled, { __jsExpr: "process.platform !== 'win32'" });
-    assert.deepEqual(rows.find(row => row.id === 'dsh-browser').config.allowedOrigins, []);
+    const browser = rows.find(row => row.id === 'dsh-browser');
+    assert.deepEqual(browser.config.allowedOrigins, []);
+    assert.deepEqual(browser.isolate, { zsevenBrowserDriver: true });
   }
 });
 
@@ -50,5 +61,6 @@ test('Hermes preset only enables browser tools when the persisted selection incl
   const preset = rows.flatMap(row => row.insert ?? []).find(row => row.id === 'preset-hermes-qwen');
   const browser = preset.config.plugins.find(row => row.id === 'dsh-browser');
   assert.equal(browser.name, '/opt/homelab-dsh-plugins/packages/dsh-browser/lib/index.js');
+  assert.deepEqual(browser.isolate, { zsevenBrowserDriver: true });
   assert.equal(browser.disabled.__jsExpr, "JSON.parse(process.env.DSH_OFFLINE_ACTIVE_PLUGINS || '[]').includes('dsh-browser') === false");
 });

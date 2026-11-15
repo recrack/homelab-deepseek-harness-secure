@@ -22,6 +22,9 @@ export async function presetPatches(activePluginIds = []) {
     const web = preset.config.plugins.filter(row => row.id === 'tool-web');
     if (web.length !== 1) throw new Error(`Expected one Web tool in preset ${id}`);
     web[0].config = { ...web[0].config, searchTimeoutMs: 370000, fetchTimeoutMs: 370000 };
+    const pluginManagerTool = preset.config.plugins.filter(row => row.id === 'tool-plugin-manager');
+    if (pluginManagerTool.length !== 1) throw new Error(`Expected one Plugin Manager tool in preset ${id}`);
+    pluginManagerTool[0].disabled = true;
     const browser = preset.config.plugins.filter(row => row.id === 'dsh-browser');
     if (browser.length > 1) throw new Error(`Expected at most one browser plugin in preset ${id}`);
     if (browserEnabled && browser.length === 0) {
@@ -42,6 +45,10 @@ export async function presetPatches(activePluginIds = []) {
       };
     } else if (browser.length === 1) {
       preset.config.plugins = preset.config.plugins.filter(row => row.id !== 'dsh-browser');
+    }
+    if (browserEnabled) {
+      const browserPlugin = preset.config.plugins.find(row => row.id === 'dsh-browser');
+      browserPlugin.isolate = { ...browserPlugin.isolate, zsevenBrowserDriver: true };
     }
     patches.push({ id: preset.id, config: preset.config });
   }

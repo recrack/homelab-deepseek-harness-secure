@@ -33,12 +33,12 @@ elif [ "$1" = -S ]; then
 printf '%s\\n' '-P OUTPUT DROP' '-A OUTPUT -o lo -j ACCEPT'
 fi''')
             stub("getent", "exit 0")
-            stub("python3", 'if [ "$1" = - ] && [ -n "${GATEWAY_IP:-}" ]; then script=$(cat); case "$script" in *"from urllib.parse import urlsplit"*) printf "%s\\n" "$script" | "' + sys.executable + '" -;; *) echo 172.30.0.2;; esac; elif [ "$1" = -c ]; then case "$2" in *CapInh*) exit 0;; esac; exec "' + sys.executable + '" "$@"; elif [ "$1" = "$MOCK_PROFILE_INSTALLER" ]; then printf called > "$MOCK_PLUGIN_INSTALL"; printf "%s\\n" "${DSH_OFFLINE_SELECTED_PLUGINS:-[]}"; else exec "' + sys.executable + '" "$@"; fi')
+            stub("python3", 'if [ "$1" = - ] && [ -n "${GATEWAY_IP:-}" ]; then script=$(cat); case "$script" in *"from urllib.parse import urlsplit"*) printf "%s\\n" "$script" | "' + sys.executable + '" -;; *) echo 172.30.0.2;; esac; elif [ "$1" = -c ]; then case "$2" in *CapInh*) exit 0;; esac; exec "' + sys.executable + '" "$@"; elif [ "$1" = /opt/dsh/deploy/offline/model_socket_proxy.py ]; then printf started > "$MOCK_PROXY_ARGS"; : > "$7"; exec sleep 60; elif [ "$1" = "$MOCK_PROFILE_INSTALLER" ]; then printf called > "$MOCK_PLUGIN_INSTALL"; printf "%s\\n" "${DSH_OFFLINE_SELECTED_PLUGINS:-[]}"; else exec "' + sys.executable + '" "$@"; fi')
             stub("setpriv", '''printf "%s\\n" "$@" > "$MOCK_DROP"
 printf "%s\\n" "$DSH_WEB_HOST" > "$MOCK_WEB_HOST"
 while [ "$#" -gt 0 ]; do case "$1" in --*) shift;; *) break;; esac; done
 exec "$@"''')
-            stub("node", 'printf "%s\\n" "$@" > "$MOCK_NODE_ARGS"; printf "%s\\n" "$DSH_LOCAL_MODEL_KEY" > "$MOCK_KEY"; printf "%s\\n" "${DSH_COLLECTOR_URL:-}" > "$MOCK_COLLECTOR_URL"; printf "%s\\n" "${DSH_OFFLINE_ACTIVE_PLUGINS:-}" > "$MOCK_ACTIVE_PLUGINS"')
+            stub("node", 'printf "%s\\n" "$@" > "$MOCK_NODE_ARGS"; printf "%s\\n" "$DSH_LOCAL_MODEL_KEY" > "$MOCK_KEY"; printf "%s" "$DSH_MODEL_BASE_URL" > "$MOCK_MODEL_BASE_URL"; printf "%s\\n" "${DSH_COLLECTOR_URL:-}" > "$MOCK_COLLECTOR_URL"; printf "%s\\n" "${DSH_OFFLINE_ACTIVE_PLUGINS:-}" > "$MOCK_ACTIVE_PLUGINS"')
             source = Path(__file__).with_name("entrypoint.sh").read_text()
             profile_installer = root / "profile_plugins.py"
             profile_installer.write_text("# entrypoint test stub\n")
@@ -64,6 +64,9 @@ exec "$@"''')
                 "MOCK_WEB_HOST": str(root / "web-host"),
                 "MOCK_NODE_ARGS": str(root / "node-args"),
                 "MOCK_KEY": str(root / "key"),
+                "MOCK_MODEL_BASE_URL": str(root / "model-base-url"),
+                "MOCK_PROXY_ARGS": str(root / "proxy-args"),
+                "MOCK_PROXY_READY_FILE": str(temporary + "/state/tmp/model-proxy.ready"),
                 "MOCK_COLLECTOR_URL": str(root / "collector-url"),
                 "MOCK_ACTIVE_PLUGINS": str(root / "active-plugins"),
                 "MOCK_PROFILE_INSTALLER": str(profile_installer),
@@ -98,6 +101,31 @@ exec "$@"''')
             self.assertFalse((root / "plugin-install").exists())
             headless_rules = (root / "rules").read_text()
             self.assertNotIn("--dport 3080", headless_rules)
+            model_socket = root / "model.sock"
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as gateway_socket:
+                gateway_socket.bind(str(model_socket))
+                result = run({
+                    "MODEL_GATEWAY_MODE": "unix",
+                    "DSH_NETWORK_GATEWAY_HOST": "172.30.0.1",
+                    "DSH_MODEL_GATEWAY_SOCKET": str(model_socket),
+                    "DSH_MODEL_PROXY_PORT": "18081",
+                })
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((root / "model-base-url").read_text().strip(), "http://127.0.0.1:18081/v1")
+            unix_rules = (root / "rules").read_text()
+            self.assertNotIn("--dport 18089", unix_rules)
+            self.assertIn("-A OUTPUT -o lo -j ACCEPT", unix_rules)
+            self.assertEqual((root / "proxy-args").read_text(), "started")
+            result = run({
+                "MODEL_GATEWAY_MODE": "unix",
+                "DSH_NETWORK_GATEWAY_HOST": "172.30.0.1",
+                "DSH_MODEL_GATEWAY_SOCKET": str(model_socket),
+                "DSH_MODEL_PROXY_PORT": "18081",
+                "DSH_COLLECTOR_HOST": "172.30.0.3",
+            })
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("-d 172.30.0.3/32 -p tcp --dport 8080", (root / "rules").read_text())
+            model_socket.unlink()
             result = run({}, "web")
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual((root / "plugin-install").read_text(), "called")

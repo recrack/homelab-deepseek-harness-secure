@@ -11,11 +11,12 @@ import secrets
 import signal
 import stat
 import subprocess
+import tempfile
 import threading
 import uuid
 from urllib.parse import urlsplit
 
-from model_gateway import make_server, upstream_address
+from model_gateway import make_server, make_unix_server, upstream_address
 from search_services import SearchServices
 
 
@@ -70,8 +71,10 @@ def main():
     parser.add_argument("--model", required=True)
     parser.add_argument("--model-patch", type=Path)
     parser.add_argument("--base-url", required=True)
+    parser.add_argument("--model-gateway-mode", choices=("tcp", "unix"), default="tcp")
+    parser.add_argument("--model-proxy-port", type=int, default=18081)
     parser.add_argument("--port", type=int, default=3081)
-    parser.add_argument("--collector-port", type=int, default=3082)
+    parser.add_argument("--collector-port", type=int, default=3083)
     parser.add_argument("--approval-file", type=Path)
     parser.add_argument("--plugin", action="append", default=[], metavar="ID", help="install and activate an optional Web plugin; repeat to select more")
     parser.add_argument("--hermes-acp-volume")
@@ -105,6 +108,10 @@ def main():
         parser.error("Collector port must be valid and distinct from the UI port")
     if not 1 <= args.port <= 65535 or min(args.context_window, args.max_tokens, args.max_body) < 1:
         parser.error("Ports and limits must be positive and valid")
+    if not 1024 <= args.model_proxy_port <= 65535:
+        parser.error("Model proxy port must be an unprivileged TCP port")
+    if args.model_gateway_mode == "unix" and platform.system() != "Linux":
+        parser.error("Unix-socket model gateways require Linux")
     search_keys = ("DSH_SEARXNG_URL", "DSH_RUSTXNG_URL")
     search_env = {key: os.environ[key] for key in search_keys if key in os.environ}
     search_network = os.environ.get("DSH_SEARCH_NETWORK")
@@ -144,6 +151,7 @@ def main():
         docker("volume", "inspect", args.hermes_acp_volume, capture=True)
     name = "dsh-offline-" + uuid.uuid4().hex[:12]
     server = None
+    gateway_socket_dir = None
     child = None
     network_created = False
     collector_started = False
@@ -166,7 +174,13 @@ def main():
             bind = gateway = network["IPAM"]["Config"][0]["Gateway"]
         else:
             raise ValueError("Only macOS and Linux are supported")
-        server = make_server(bind, 0, args.base_url, args.max_body)
+        if args.model_gateway_mode == "unix":
+            gateway_socket_dir = tempfile.TemporaryDirectory(prefix="dsh-model-gateway-")
+            socket_path = Path(gateway_socket_dir.name) / "model.sock"
+            server = make_unix_server(socket_path, args.base_url, args.max_body)
+            os.chmod(socket_path, 0o600)
+        else:
+            server = make_server(bind, 0, args.base_url, args.max_body)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         if args.search == "auto" and not search_env:
             cache_root = Path(os.environ.get("XDG_CACHE_HOME", str(home / ".cache"))).expanduser().resolve()
@@ -212,19 +226,27 @@ def main():
         env = {
             "DSH_COLLECTOR_HOST": collector_ip,
             "DSH_COLLECTOR_PORT": "8080",
-            "MODEL_GATEWAY_HOST": gateway,
-            "MODEL_GATEWAY_PORT": str(server.server_port),
+            "MODEL_GATEWAY_MODE": args.model_gateway_mode,
             "DSH_MODEL_ID": args.model,
             "DSH_WORKSPACE": str(workspace),
             "DSH_UID": str(os.getuid()),
             "DSH_GID": str(os.getgid()),
             "DSH_WEB_PORT": "3080",
-            "DSH_PUBLIC_URL": f"http://127.0.0.1:{args.port}",
+            "DSH_PUBLIC_URL": os.environ.get("DSH_PUBLIC_URL", f"http://127.0.0.1:{args.port}"),
             "DSH_CONTEXT_WINDOW": str(args.context_window),
             "DSH_MAX_TOKENS": str(args.max_tokens),
             "DSH_BROWSER_ALLOWED_ORIGINS": json.dumps([origin for origin, _, _ in browser_origins]),
             "DSH_OFFLINE_SELECTED_PLUGINS": json.dumps(args.plugin),
         }
+        if args.model_gateway_mode == "unix":
+            env.update({
+                "DSH_NETWORK_GATEWAY_HOST": gateway,
+                "DSH_MODEL_GATEWAY_SOCKET": "/run/dsh-model/model.sock",
+                "DSH_MODEL_PROXY_PORT": str(args.model_proxy_port),
+            })
+        else:
+            env["MODEL_GATEWAY_HOST"] = gateway
+            env["MODEL_GATEWAY_PORT"] = str(server.server_port)
         if args.hermes_acp_volume is not None:
             env["DSH_HERMES_ACP_ENABLED"] = "1"
         command = ["docker", "run", "--rm", "--pull=never", "--name", name, "--network", name,
@@ -235,6 +257,14 @@ def main():
             command.extend(("--env", key + "=" + value))
         command.extend(("--mount", f"type=bind,source={workspace},target={workspace}",
                         "--mount", f"type=bind,source={state},target=/state"))
+        for filename in ("cordis.patch.yml", "prepare-presets.mjs", "hermes.patch.yml"):
+            source = Path(__file__).resolve().parent / filename
+            command.extend(("--mount", f"type=bind,source={source},target=/opt/dsh/deploy/offline/{filename},readonly"))
+        if gateway_socket_dir is not None:
+            command.extend(("--mount", f"type=bind,source={gateway_socket_dir.name},target=/run/dsh-model,readonly"))
+            for filename in ("entrypoint.sh", "model_socket_proxy.py"):
+                source = Path(__file__).resolve().parent / filename
+                command.extend(("--mount", f"type=bind,source={source},target=/opt/dsh/deploy/offline/{filename},readonly"))
         if args.hermes_acp_volume is not None:
             command.extend(("--mount", f"type=volume,source={args.hermes_acp_volume},target=/run/hermes-acp,readonly"))
         if args.profile == "web":
@@ -242,7 +272,8 @@ def main():
         command.extend((args.image, args.profile))
         if model_patch is not None:
             command.extend(("--patch", str(model_patch)))
-        command.extend(args.task)
+        task = args.task[1:] if args.task[:1] == ["--"] else args.task
+        command.extend(task)
         child = subprocess.Popen(command)
         if args.profile == "web":
             print(f"DSH local UI: http://127.0.0.1:{args.port}", flush=True)
@@ -266,6 +297,8 @@ def main():
         if server is not None:
             server.shutdown()
             server.server_close()
+        if gateway_socket_dir is not None:
+            gateway_socket_dir.cleanup()
         if network_created:
             docker("network", "rm", name, capture=True)
         for signum, handler in previous_handlers.items():

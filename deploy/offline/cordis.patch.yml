@@ -15,10 +15,16 @@
             contextWindow: !!js Number(process.env.DSH_CONTEXT_WINDOW)
             maxTokens: !!js Number(process.env.DSH_MAX_TOKENS)
             input: [text]
-            reasoningEfforts: false
+            reasoningEfforts:
+              off: none
+              low: low
+              medium: medium
+              high: xhigh
+        reasoning: low
+        timeoutMs: 300000
         compat:
           supportsStore: false
-          supportsReasoningEffort: false
+          supportsReasoningEffort: true
           maxTokensField: max_tokens
 - id: sandbox-policy
   config:

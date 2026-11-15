@@ -13,11 +13,18 @@ python3 deploy/offline/run.py --workspace /absolute/project --state /absolute/pr
 
 Docker and Python 3 are required on the host. Run as a non-root user. The workspace cannot be the host home, a parent of the host home, or a container runtime directory. State must be a separate private directory. Existing Unix sockets in either mount are rejected. The launcher creates state with mode 0700 and publishes the optional UI and approval page on host loopback only.
 
-The model server must be a private IPv4 HTTP listener using the `/v1` path. The relay accepts only model routes, removes credentials and cookies, does not log request bodies, and rejects redirects. A localhost cloud proxy still sends model data to its own upstream; use a server that keeps requests local.
+The launcher forwards an inherited `DSH_PUBLIC_URL` to the container, defaulting to `http://127.0.0.1:<port>` when unset. The shipped Web profile overlay reads this value to build its public URL, so set it in the host environment when the UI is behind a path-aware proxy. Pass other Web or headless profile flags after the launcher's `--`; the launcher strips that separator before forwarding them. For example:
 
-The UI is available at `http://127.0.0.1:3081`. The launcher prints an approval URL in the controlling terminal. Headless runs can use `--approval-file /absolute/private-file` outside the workspace and state; the file is created with mode 0600 and removed on exit.
+```sh
+DSH_PUBLIC_URL=https://family.example/workspace/ \
+python3 deploy/offline/run.py --workspace /absolute/project --state /absolute/private-dsh-state --model MODEL_ID --base-url http://127.0.0.1:18080/v1 --profile web -- --trusted-host family.example --no-open
+```
 
-`--profile headless` disables the UI. `--port`, `--collector-port`, `--context-window`, and `--max-tokens` configure local listeners and model limits. `--model-patch` accepts a trusted Cordis overlay inside the workspace; it can change plugin and browser policy settings, while the container firewall remains fixed.
+The model server must be a private IPv4 HTTP listener using the `/v1` path. The relay accepts only model routes, removes credentials and cookies, does not log request bodies, and rejects redirects. A localhost cloud proxy still sends model data to its own upstream; use a server that keeps requests local. On Linux, `--model-gateway-mode unix` mounts the host relay's private Unix socket into the container and exposes it through a loopback-only HTTP proxy. Use this mode when the host firewall blocks Docker-bridge ingress; the DSH container keeps its existing egress policy.
+
+The UI is available at `http://127.0.0.1:3081`. The collector host port defaults to `3083`. The launcher prints an approval URL in the controlling terminal. Headless runs can use `--approval-file /absolute/private-file` outside the workspace and state; the file is created with mode 0600 and removed on exit.
+
+`--profile headless` disables the UI. `--port`, `--collector-port`, `--context-window`, and `--max-tokens` configure local listeners and model limits. `--model-gateway-mode tcp` remains the default; `unix` is supported on Linux. `--model-patch` accepts a trusted Cordis overlay inside the workspace; it can change plugin and browser policy settings, while the container firewall remains fixed.
 
 Optional plugin packages are built into the image from a pinned [homelab-dsh-plugins](https://github.com/recrack/homelab-dsh-plugins) commit. This deployment's `--plugin <id>` flag activates an image-included package in the persistent Web profile; it is not the DSH Plugin Manager, whose UI and tool are disabled here. Selections remain active on later launches. See [plugin build and activation](#build-and-activation) for how the two repositories work together. For example:
 
@@ -26,6 +33,8 @@ python3 deploy/offline/run.py --workspace /absolute/project --state /absolute/pr
 ```
 
 Available IDs are `dsh-browser`, `dsh-context`, `dsh-claude-artifacts`, `dsh-claude-design`, and `dsh-crew`. No optional plugin is activated for a new state directory unless selected. Existing profile selections stay installed. DSH Crew requires the Web profile and running local DSH hub; its worker providers use the selected local model, while vision and image generation remain disabled.
+
+Browser-enabled presets isolate the plugin's `zsevenBrowserDriver` service within each preset so the preset registry can validate and mount it for new sessions.
 
 The `dsh-browser` plugin starts with an empty navigation allowlist. To allow one exact loopback or private IPv4 origin, select the plugin and repeat `--browser-origin` for each origin:
 
@@ -49,11 +58,13 @@ Selected plugin code runs inside the DSH container and follows the container net
 
 The plugin repository's [`plugins.json`](https://github.com/recrack/homelab-dsh-plugins/blob/master/plugins.json) records upstream revisions and activation types; its [snapshot-to-runtime architecture](https://github.com/recrack/homelab-dsh-plugins/blob/master/README.md#how-the-secure-deployment-uses-these-packages) shows how those packages reach this deployment. The catalog does not populate the secure launcher's allowlist. To add a plugin, add its reviewed snapshot and build requirements to `homelab-dsh-plugins`, then update this repository's [image package links](Dockerfile), [launcher ID list](run.py), and [persistent profile package and bundle mappings](profile_plugins.py). Register every new ID in [prepare-presets.mjs](prepare-presets.mjs); add its preset row there when the plugin uses Web preset activation. Rebuild the image to include the package, then select it with `--plugin <id>`; the Plugin Manager UI and tool are not install paths in this deployment.
 
+The host launcher mounts its current `cordis.patch.yml`, `prepare-presets.mjs`, and `hermes.patch.yml` into the container read-only. Model provider settings and preset safety fixes take effect on the next member restart without rebuilding the DSH image; plugin package or compiled DSH changes still require an image rebuild.
+
 The `dsh-context` snapshot keeps its context panels and blocks its automatic catalog, balance, and recommendation requests. The Baoyu plugins provide the local Artifacts page and design canvas. DSH Crew requires the running DSH hub and uses the selected local model for both worker tiers; it cannot fall back to a standalone DeepSeek runtime. The multimodal vision and image-generation providers are disabled.
 
 When `--hermes-acp-volume` is supplied, DSH Crew routes both worker tiers through the Hermes + Qwen agent preset. Without that volume, workers use the local DSH model. The launcher keeps the existing profile patch and other bundle selections when it adds these bundles.
 
-For standard DSH plugin development, see [your first plugin](../../docs/user/develop/basic/index.md) and [package and install a plugin](../../docs/user/develop/basic/publish.md). A search or fetch backend can extend `dsh-web` by registering a provider; see [add another provider](../../packages/web/web/README.md#adding-a-provider). This offline deployment disables Plugin Manager; `deploy/offline/profile_plugins.py` installs only explicitly selected catalog entries.
+For standard DSH plugin development, see [your first plugin](../../docs/user/develop/basic/index.md) and [package and install a plugin](../../docs/user/develop/basic/publish.md). A search or fetch backend can extend `dsh-web` by registering a provider; see [add another provider](../../packages/web/web/README.md#adding-a-provider). This offline deployment disables both the Host Plugin Manager provider and each generated agent preset's `tool-plugin-manager` tool. The Standard preset can otherwise re-enable the tool when a profile context exists, leaving new sessions waiting for a provider that is intentionally absent. `deploy/offline/profile_plugins.py` installs only explicitly selected catalog entries.
 
 ## Local search
 

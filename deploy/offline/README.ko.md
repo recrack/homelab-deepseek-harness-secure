@@ -15,7 +15,7 @@ python3 deploy/offline/run.py --workspace /absolute/project --state /absolute/pr
 
 모델 서버는 `/v1` 경로를 제공하는 비공개 IPv4 HTTP 서버여야 합니다. 릴레이는 모델 경로만 전달하고 자격 증명과 쿠키를 제거하며 요청 본문을 로그에 남기지 않고 리다이렉트를 거부합니다. 로컬 프록시가 외부 모델 서비스로 요청을 전달하면 모델 데이터는 해당 서비스로 전송되므로 요청을 로컬에 보관하는 서버를 사용하세요.
 
-UI는 `http://127.0.0.1:3081`에서 열립니다. 실행기는 제어 터미널에 승인 URL을 표시합니다. 터미널이 없는 작업은 작업공간과 상태 디렉터리 밖에 `--approval-file /absolute/private-file`을 지정할 수 있습니다. 파일은 권한 0600으로 만들고 실행이 끝나면 지웁니다.
+UI는 `http://127.0.0.1:3081`에서 열리고 collector 호스트 포트 기본값은 `3083`입니다. 실행기는 제어 터미널에 승인 URL을 표시합니다. 터미널이 없는 작업은 작업공간과 상태 디렉터리 밖에 `--approval-file /absolute/private-file`을 지정할 수 있습니다. 파일은 권한 0600으로 만들고 실행이 끝나면 지웁니다.
 
 `--profile headless`는 UI를 끕니다. `--port`, `--collector-port`, `--context-window`, `--max-tokens`로 로컬 포트와 모델 한도를 설정할 수 있습니다. `--model-patch`는 작업공간 안의 신뢰하는 Cordis 오버레이를 받습니다. 플러그인이나 브라우저 설정을 바꿀 수 있지만 컨테이너 방화벽 정책은 바뀌지 않습니다.
 
@@ -41,13 +41,15 @@ python3 deploy/offline/run.py --workspace /absolute/project --state /absolute/pr
 
 플러그인 저장소는 검토한 소스 스냅샷과 로컬 보완을 관리하고, secure 저장소는 이미지를 만들고 허용된 ID를 지속 프로필에 활성화합니다. 실행 시 플러그인 저장소를 clone하거나 패키지를 빌드하지 않습니다.
 
+호스트 실행기는 현재 `cordis.patch.yml`과 `prepare-presets.mjs`를 읽기 전용으로 컨테이너에 연결합니다. 모델 provider 설정과 preset 안전 수정은 다음 런타임 재시작부터 적용되며 이미지를 다시 빌드할 필요가 없습니다. 플러그인 패키지나 컴파일된 DSH 코드를 바꾸면 이미지를 다시 빌드해야 합니다.
+
 플러그인 저장소의 고정 스냅샷부터 이미지 빌드, 명시적 선택, 프로필 연결, 제한된 런타임까지는 [Archify 플러그인 빌드·활성화 그림](../../.archify/architecture-dsh-plugin-activation-20261115-010540/architecture.html)에 정리했습니다. 로컬 checkout에서는 standalone HTML을 브라우저로 여세요.
 
 `run.py --plugin <ID>`는 이미지에 이미 들어 있는 패키지만 선택합니다. 시작할 때 [profile_plugins.py](profile_plugins.py)가 선택된 패키지를 로컬 의존성으로 기록하고 패키지 경로를 지속 Web 프로필에 연결하며 기존 선택을 보존합니다. bundle 플러그인은 `dsh.profile.bundles`에 추가되고, `dsh-browser`는 생성된 오버레이를 통해 기본 Web preset에 추가됩니다. 일반 Cordis 로더가 프로필을 실행하며 플러그인 코드는 DSH 컨테이너 안에서 동작하고 같은 방화벽 정책을 따릅니다.
 
 플러그인을 새로 추가할 때는 두 저장소를 모두 수정해야 합니다. 플러그인 저장소에 검토한 스냅샷과 빌드 요건을 추가하고, secure 저장소에서 [이미지 패키지 링크](Dockerfile), [허용 ID 목록](run.py), [프로필 패키지와 bundle 매핑](profile_plugins.py)을 추가합니다. 모든 새 ID를 [prepare-presets.mjs](prepare-presets.mjs)의 ID 목록에도 등록하고, preset 방식이면 해당 preset 행을 추가합니다. 플러그인 저장소의 `plugins.json`만 수정해도 실행기가 해당 플러그인을 자동으로 찾지는 않습니다. 이미지에 포함되도록 다시 빌드한 뒤 `--plugin <ID>`로 선택합니다.
 
-일반 DSH 플러그인 개발은 [첫 플러그인 만들기](../../docs/user/develop/basic/index.md)와 [플러그인 패키징 및 설치](../../docs/user/develop/basic/publish.md)를 참고하세요. 검색 또는 가져오기 백엔드는 [dsh-web provider 추가](../../packages/web/web/README.md#adding-a-provider) 방식으로 확장할 수 있습니다. 이 배포는 Plugin Manager를 끄고, `deploy/offline/profile_plugins.py`를 통해 사용자가 고른 카탈로그 항목만 프로필에 설치합니다.
+일반 DSH 플러그인 개발은 [첫 플러그인 만들기](../../docs/user/develop/basic/index.md)와 [플러그인 패키징 및 설치](../../docs/user/develop/basic/publish.md)를 참고하세요. 검색 또는 가져오기 백엔드는 [dsh-web provider 추가](../../packages/web/web/README.md#adding-a-provider) 방식으로 확장할 수 있습니다. 이 배포는 Host의 Plugin Manager 제공자와 각 agent preset의 `tool-plugin-manager` 도구를 모두 끕니다. 표준 preset이 프로필 컨텍스트에서 도구를 다시 켜 새 세션이 제공자 대기 상태로 실패하지 않게 합니다. `deploy/offline/profile_plugins.py`는 사용자가 고른 카탈로그 항목만 프로필에 설치합니다.
 
 ## 데이터 흐름과 네트워크
 

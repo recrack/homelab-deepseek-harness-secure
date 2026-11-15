@@ -8,8 +8,21 @@ profile=${1:-web}
 if [ "$#" -gt 0 ]; then shift; fi
 case "$profile" in web|headless) ;; *) fail 'profile must be web or headless';; esac
 
-: "${MODEL_GATEWAY_HOST:?MODEL_GATEWAY_HOST is required}"
-: "${MODEL_GATEWAY_PORT:?MODEL_GATEWAY_PORT is required}"
+MODEL_GATEWAY_MODE=${MODEL_GATEWAY_MODE:-tcp}
+DSH_MODEL_PROXY_PORT=${DSH_MODEL_PROXY_PORT:-18081}
+DSH_MODEL_GATEWAY_SOCKET=${DSH_MODEL_GATEWAY_SOCKET:-}
+DSH_NETWORK_GATEWAY_HOST=${DSH_NETWORK_GATEWAY_HOST:-}
+case "$MODEL_GATEWAY_MODE" in
+    tcp)
+        : "${MODEL_GATEWAY_HOST:?MODEL_GATEWAY_HOST is required in tcp mode}"
+        : "${MODEL_GATEWAY_PORT:?MODEL_GATEWAY_PORT is required in tcp mode}"
+        ;;
+    unix)
+        : "${DSH_MODEL_GATEWAY_SOCKET:?DSH_MODEL_GATEWAY_SOCKET is required in unix mode}"
+        : "${DSH_NETWORK_GATEWAY_HOST:?DSH_NETWORK_GATEWAY_HOST is required in unix mode}"
+        ;;
+    *) fail 'MODEL_GATEWAY_MODE must be tcp or unix';;
+esac
 : "${DSH_MODEL_ID:?DSH_MODEL_ID is required}"
 : "${DSH_UID:?DSH_UID is required}"
 : "${DSH_GID:?DSH_GID is required}"
@@ -21,6 +34,7 @@ fi
 DSH_WEB_PORT=${DSH_WEB_PORT:-3080}
 DSH_BROWSER_ALLOWED_ORIGINS=${DSH_BROWSER_ALLOWED_ORIGINS:-[]}
 DSH_OFFLINE_SELECTED_PLUGINS=${DSH_OFFLINE_SELECTED_PLUGINS:-[]}
+export MODEL_GATEWAY_MODE DSH_MODEL_PROXY_PORT DSH_MODEL_GATEWAY_SOCKET DSH_NETWORK_GATEWAY_HOST
 export DSH_HERMES_ACP_ENABLED DSH_WEB_PORT DSH_BROWSER_ALLOWED_ORIGINS DSH_OFFLINE_SELECTED_PLUGINS
 if [ "$DSH_HERMES_ACP_ENABLED" = 1 ] && [ ! -S /run/hermes-acp/agent.sock ]; then
     fail 'the mounted Hermes ACP socket is unavailable'
@@ -31,7 +45,12 @@ import ipaddress
 import os
 import socket
 
-for name, fallback in (('MODEL_GATEWAY_PORT', '3080'), ('DSH_WEB_PORT', '3080'), ('DSH_COLLECTOR_PORT', '8080')):
+names = [('DSH_WEB_PORT', '3080'), ('DSH_COLLECTOR_PORT', '8080')]
+if os.environ['MODEL_GATEWAY_MODE'] == 'tcp':
+    names.append(('MODEL_GATEWAY_PORT', '3080'))
+else:
+    names.append(('DSH_MODEL_PROXY_PORT', '18081'))
+for name, fallback in names:
     value = os.environ.get(name, fallback)
     if not value.isascii() or not value.isdecimal() or not 1 <= int(value) <= 65535:
         raise SystemExit(f'{name} must be a TCP port')
@@ -41,7 +60,9 @@ for name in ('DSH_UID', 'DSH_GID'):
         raise SystemExit(f'{name} must be a numeric uid/gid')
 if int(os.environ['DSH_UID']) == 0:
     raise SystemExit('DSH_UID must not be root')
-host = os.environ['MODEL_GATEWAY_HOST']
+if os.environ['MODEL_GATEWAY_MODE'] == 'unix' and int(os.environ['DSH_MODEL_PROXY_PORT']) < 1024:
+    raise SystemExit('DSH_MODEL_PROXY_PORT must be an unprivileged TCP port')
+host = os.environ['MODEL_GATEWAY_HOST'] if os.environ['MODEL_GATEWAY_MODE'] == 'tcp' else os.environ['DSH_NETWORK_GATEWAY_HOST']
 if host == 'host.docker.internal':
     # Docker Desktop resolves this name locally before DNS is disabled.
     host = socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_STREAM)[0][4][0]
@@ -62,13 +83,18 @@ import socket
 
 with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as route:
     # UDP connect selects a source address without sending a datagram.
-    route.connect((os.environ['GATEWAY_IP'], int(os.environ['MODEL_GATEWAY_PORT'])))
+    route.connect((os.environ['GATEWAY_IP'], int(os.environ.get('MODEL_GATEWAY_PORT', '1'))))
     print(route.getsockname()[0])
 PY
 )
 export DSH_WEB_HOST
 collector_rule=
-expected_rules=5
+gateway_rule=
+expected_rules=4
+if [ "$MODEL_GATEWAY_MODE" = tcp ]; then
+    gateway_rule="-A OUTPUT -d $gateway_ip/32 -p tcp --dport $MODEL_GATEWAY_PORT -m conntrack --ctstate NEW -j ACCEPT"
+    expected_rules=5
+fi
 web_input_rule=
 expected_input_rules=3
 if [ "$profile" = web ]; then
@@ -81,7 +107,7 @@ if [ -n "${DSH_COLLECTOR_HOST:-}" ]; then
     export DSH_COLLECTOR_PORT
     export DSH_COLLECTOR_URL="http://$DSH_COLLECTOR_HOST:$DSH_COLLECTOR_PORT"
     collector_rule="-A OUTPUT -d $DSH_COLLECTOR_HOST/32 -p tcp --dport $DSH_COLLECTOR_PORT -m conntrack --ctstate NEW -j ACCEPT"
-    expected_rules=6
+    expected_rules=$((expected_rules + 1))
 fi
 browser_rules=$(GATEWAY_IP="$gateway_ip" python3 - <<'PY'
 import ipaddress
@@ -93,7 +119,7 @@ origins = json.loads(os.environ['DSH_BROWSER_ALLOWED_ORIGINS'])
 if not isinstance(origins, list) or any(not isinstance(origin, str) for origin in origins):
     raise SystemExit('browser origins must be a JSON string array')
 allowed = tuple(map(ipaddress.ip_network, ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16')))
-gateway = (ipaddress.IPv4Address(os.environ['GATEWAY_IP']), int(os.environ['MODEL_GATEWAY_PORT']))
+gateway = (ipaddress.IPv4Address(os.environ['GATEWAY_IP']), int(os.environ['MODEL_GATEWAY_PORT'])) if os.environ['MODEL_GATEWAY_MODE'] == 'tcp' else None
 collector = (ipaddress.IPv4Address(os.environ['DSH_COLLECTOR_HOST']), int(os.environ['DSH_COLLECTOR_PORT'])) if os.environ.get('DSH_COLLECTOR_HOST') else None
 seen = set()
 for origin in origins:
@@ -129,7 +155,7 @@ $web_input_rule
 -A OUTPUT -d 127.0.0.11/32 -j DROP
 -A OUTPUT -o lo -j ACCEPT
 -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
--A OUTPUT -d $gateway_ip/32 -p tcp --dport $MODEL_GATEWAY_PORT -m conntrack --ctstate NEW -j ACCEPT
+$gateway_rule
 $collector_rule
 $browser_rules
 COMMIT
@@ -143,7 +169,9 @@ ip6tables-restore <<'EOF'
 -A OUTPUT -o lo -j ACCEPT
 COMMIT
 EOF
-iptables -C OUTPUT -d "$gateway_ip/32" -p tcp --dport "$MODEL_GATEWAY_PORT" -m conntrack --ctstate NEW -j ACCEPT
+if [ "$MODEL_GATEWAY_MODE" = tcp ]; then
+    iptables -C OUTPUT -d "$gateway_ip/32" -p tcp --dport "$MODEL_GATEWAY_PORT" -m conntrack --ctstate NEW -j ACCEPT
+fi
 if [ -n "${DSH_COLLECTOR_HOST:-}" ]; then
     iptables -C OUTPUT -d "$DSH_COLLECTOR_HOST/32" -p tcp --dport "$DSH_COLLECTOR_PORT" -m conntrack --ctstate NEW -j ACCEPT
 fi
@@ -159,8 +187,12 @@ if ! getent passwd "$DSH_UID" >/dev/null; then
     printf 'dsh%s:x:%s:%s:DSH:/state/home:/bin/sh\n' "$DSH_UID" "$DSH_UID" "$DSH_GID" >> /etc/passwd
 fi
 export HOME=/state/home DSH_HOME=/state/home/.dsh TMPDIR=/state/tmp
-export MODEL_GATEWAY_HOST="$gateway_ip"
-export DSH_MODEL_BASE_URL="http://$gateway_ip:$MODEL_GATEWAY_PORT/v1"
+if [ "$MODEL_GATEWAY_MODE" = tcp ]; then
+    export MODEL_GATEWAY_HOST="$gateway_ip"
+    export DSH_MODEL_BASE_URL="http://$gateway_ip:$MODEL_GATEWAY_PORT/v1"
+else
+    export DSH_MODEL_BASE_URL="http://127.0.0.1:$DSH_MODEL_PROXY_PORT/v1"
+fi
 export DSH_LOCAL_MODEL_KEY=local
 export DSH_TELEMETRY_DISABLED=1 DSH_TELEMETRY_MODE=DISABLED DO_NOT_TRACK=1
 export HF_HUB_OFFLINE=1 HF_HUB_DISABLE_TELEMETRY=1
@@ -177,6 +209,31 @@ exec setpriv --reuid="$DSH_UID" --regid="$DSH_GID" --clear-groups \
         shift
         python3 -c '\''from pathlib import Path; s=dict(line.split(":",1) for line in Path("/proc/self/status").read_text().splitlines() if ":" in line); assert all(int(s[k].strip(),16)==0 for k in ("CapInh","CapPrm","CapEff","CapBnd","CapAmb")); assert s["NoNewPrivs"].strip()=="1"'\''
         mkdir -p /state/home /state/tmp
+        if [ "$MODEL_GATEWAY_MODE" = unix ]; then
+            [ -S "$DSH_MODEL_GATEWAY_SOCKET" ] || { printf "%s\n" "dsh offline: mounted model socket is unavailable" >&2; exit 1; }
+            ready_file="$TMPDIR/model-proxy.ready"
+            rm -f "$ready_file"
+            python3 /opt/dsh/deploy/offline/model_socket_proxy.py \
+                --socket "$DSH_MODEL_GATEWAY_SOCKET" --port "$DSH_MODEL_PROXY_PORT" --ready-file "$ready_file" &
+            proxy_pid=$!
+            attempts=0
+            while [ ! -f "$ready_file" ] && [ "$attempts" -lt 50 ]; do
+                kill -0 "$proxy_pid" 2>/dev/null || { printf "%s\n" "dsh offline: model proxy exited during startup" >&2; exit 1; }
+                sleep 0.1
+                attempts=$((attempts + 1))
+            done
+            [ -f "$ready_file" ] || { printf "%s\n" "dsh offline: model proxy did not become ready" >&2; exit 1; }
+            cleanup_model_proxy() {
+                status=$?
+                trap - EXIT INT TERM
+                kill "$proxy_pid" 2>/dev/null || true
+                wait "$proxy_pid" 2>/dev/null || true
+                exit "$status"
+            }
+            trap cleanup_model_proxy EXIT
+            trap "exit 130" INT
+            trap "exit 143" TERM
+        fi
         if [ "$profile" = web ]; then
             DSH_OFFLINE_ACTIVE_PLUGINS=$(python3 /opt/dsh/deploy/offline/profile_plugins.py)
             export DSH_OFFLINE_ACTIVE_PLUGINS
@@ -187,7 +244,13 @@ exec setpriv --reuid="$DSH_UID" --regid="$DSH_GID" --clear-groups \
         if [ "$DSH_HERMES_ACP_ENABLED" = 1 ]; then
             set -- --patch /opt/dsh/deploy/offline/hermes.patch.yml "$@"
         fi
-        exec node --import /opt/dsh/node_modules/tsx/dist/esm/index.mjs \
-            /opt/dsh/apps/cli/src/bin.ts --profile "$profile" \
-            --patch /opt/dsh/deploy/offline/cordis.patch.yml "$@"
+        if [ "$MODEL_GATEWAY_MODE" = unix ]; then
+            node --import /opt/dsh/node_modules/tsx/dist/esm/index.mjs \
+                /opt/dsh/apps/cli/src/bin.ts --profile "$profile" \
+                --patch /opt/dsh/deploy/offline/cordis.patch.yml "$@"
+        else
+            exec node --import /opt/dsh/node_modules/tsx/dist/esm/index.mjs \
+                /opt/dsh/apps/cli/src/bin.ts --profile "$profile" \
+                --patch /opt/dsh/deploy/offline/cordis.patch.yml "$@"
+        fi
     ' sh "$profile" "$@"

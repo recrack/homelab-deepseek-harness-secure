@@ -1,6 +1,8 @@
 """Restricted, credential-free relay to an explicitly selected private model engine."""
 import http.client
 import ipaddress
+import socket
+import socketserver
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
@@ -23,8 +25,8 @@ def upstream_address(base_url):
     return str(address), url.port or 80
 
 
-def make_server(bind, port, base_url, max_body=16 * 1024 * 1024):
-    """Create a route-limited relay; no request contents enter access logs."""
+def _handler(base_url, max_body):
+    """Build the restricted relay handler shared by TCP and Unix listeners."""
     upstream_host, upstream_port = upstream_address(base_url)
     if max_body < 1:
         raise ValueError("Body limit must be positive")
@@ -89,6 +91,28 @@ def make_server(bind, port, base_url, max_body=16 * 1024 * 1024):
                 if "connection" in locals():
                     connection.close()
 
-    server = ThreadingHTTPServer((bind, port), Handler)
+    return Handler
+
+
+def make_server(bind, port, base_url, max_body=16 * 1024 * 1024):
+    """Create a route-limited TCP relay; request contents never enter access logs."""
+    server = ThreadingHTTPServer((bind, port), _handler(base_url, max_body))
+    server.daemon_threads = True
+    return server
+
+
+class ThreadingUnixHTTPServer(ThreadingHTTPServer):
+    """Serve HTTP on a pathname Unix socket without adding a host TCP listener."""
+
+    address_family = socket.AF_UNIX
+
+    def server_bind(self):
+        self.socket.bind(self.server_address)
+        self.server_address = self.socket.getsockname()
+
+
+def make_unix_server(path, base_url, max_body=16 * 1024 * 1024):
+    """Create a route-limited relay on a Unix socket for a single mounted runtime."""
+    server = ThreadingUnixHTTPServer(str(path), _handler(base_url, max_body))
     server.daemon_threads = True
     return server
