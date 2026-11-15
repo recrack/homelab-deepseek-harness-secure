@@ -1,0 +1,270 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "DSH Plugin Build and Activation",
+    "locale": "en",
+    "output": ".archify/architecture-dsh-plugin-activation-20261115-010540/architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/recrack/homelab-deepseek-harness-secure.git",
+      "provider": "github",
+      "revision": "0d82fdc570760154dc4dedd88fe8016025c9b380"
+    }
+  },
+  "components": [
+    {
+      "id": "plugin-repo",
+      "type": "external",
+      "label": "homelab-dsh-plugins",
+      "sublabel": "reviewed snapshot at a pinned commit",
+      "pos": [
+        30,
+        60
+      ],
+      "size": [
+        150,
+        70
+      ],
+      "sources": [
+        {
+          "path": "deploy/offline/Dockerfile",
+          "line": 15,
+          "end_line": 20,
+          "label": "Pinned source"
+        }
+      ]
+    },
+    {
+      "id": "image-build",
+      "type": "backend",
+      "label": "Docker image build",
+      "sublabel": "fetches the pin and runs scripts/build.sh",
+      "pos": [
+        220,
+        60
+      ],
+      "size": [
+        160,
+        72
+      ],
+      "sources": [
+        {
+          "path": "deploy/offline/Dockerfile",
+          "line": 15,
+          "end_line": 22,
+          "label": "Fetch and build"
+        }
+      ]
+    },
+    {
+      "id": "image-packages",
+      "type": "backend",
+      "label": "Prebuilt package roots",
+      "sublabel": "local packages linked into DSH",
+      "pos": [
+        470,
+        60
+      ],
+      "size": [
+        165,
+        72
+      ],
+      "sources": [
+        {
+          "path": "deploy/offline/Dockerfile",
+          "line": 31,
+          "end_line": 36,
+          "label": "Local package links"
+        }
+      ]
+    },
+    {
+      "id": "host-launcher",
+      "type": "external",
+      "label": "Host launcher",
+      "sublabel": "run.py accepts fixed --plugin IDs",
+      "pos": [
+        30,
+        320
+      ],
+      "size": [
+        170,
+        72
+      ],
+      "sources": [
+        {
+          "path": "deploy/offline/run.py",
+          "line": 22,
+          "end_line": 23,
+          "label": "Allowed IDs"
+        },
+        {
+          "path": "deploy/offline/run.py",
+          "line": 66,
+          "end_line": 100,
+          "label": "CLI validation"
+        }
+      ]
+    },
+    {
+      "id": "entrypoint",
+      "type": "backend",
+      "label": "Container entrypoint",
+      "sublabel": "installs firewall, drops caps, then starts DSH",
+      "pos": [
+        470,
+        300
+      ],
+      "size": [
+        180,
+        88
+      ],
+      "sources": [
+        {
+          "path": "deploy/offline/entrypoint.sh",
+          "line": 120,
+          "end_line": 153,
+          "label": "Default-deny rules"
+        },
+        {
+          "path": "deploy/offline/entrypoint.sh",
+          "line": 171,
+          "end_line": 192,
+          "label": "Drop caps and start"
+        }
+      ]
+    },
+    {
+      "id": "profile-setup",
+      "type": "backend",
+      "label": "Persistent Web profile",
+      "sublabel": "local deps, package links, bundles and browser preset",
+      "pos": [
+        760,
+        300
+      ],
+      "size": [
+        200,
+        88
+      ],
+      "sources": [
+        {
+          "path": "deploy/offline/profile_plugins.py",
+          "line": 8,
+          "end_line": 35,
+          "label": "Local package map"
+        },
+        {
+          "path": "deploy/offline/profile_plugins.py",
+          "line": 149,
+          "end_line": 181,
+          "label": "Persist selections"
+        },
+        {
+          "path": "deploy/offline/prepare-presets.mjs",
+          "line": 8,
+          "end_line": 46,
+          "label": "Browser preset"
+        }
+      ]
+    },
+    {
+      "id": "cordis-runtime",
+      "type": "backend",
+      "label": "Cordis Web runtime",
+      "sublabel": "loads selected plugins inside DSH",
+      "pos": [
+        1070,
+        300
+      ],
+      "size": [
+        160,
+        88
+      ],
+      "sources": [
+        {
+          "path": "deploy/offline/entrypoint.sh",
+          "line": 181,
+          "end_line": 192,
+          "label": "Load composed profile"
+        },
+        {
+          "path": "deploy/offline/cordis.patch.yml",
+          "line": 45,
+          "end_line": 62,
+          "label": "Disable remote integrations"
+        },
+        {
+          "path": "deploy/offline/web.patch.yml",
+          "line": 20,
+          "end_line": 29,
+          "label": "Disable manager UI"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "security-group",
+      "label": "Restricted DSH container",
+      "wraps": [
+        "image-packages",
+        "entrypoint",
+        "profile-setup",
+        "cordis-runtime"
+      ],
+      "pad": 18
+    }
+  ],
+  "connections": [
+    {
+      "from": "plugin-repo",
+      "to": "image-build",
+      "label": "pin"
+    },
+    {
+      "from": "image-build",
+      "to": "image-packages",
+      "label": "build"
+    },
+    {
+      "from": "image-packages",
+      "to": "profile-setup",
+      "label": "local package roots"
+    },
+    {
+      "from": "host-launcher",
+      "to": "entrypoint",
+      "label": "pass selected IDs"
+    },
+    {
+      "from": "entrypoint",
+      "to": "profile-setup",
+      "label": "profile setup"
+    },
+    {
+      "from": "profile-setup",
+      "to": "cordis-runtime",
+      "label": "load profile"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "Plugin selection",
+      "items": [
+        "The launcher accepts only its fixed plugin ID list.",
+        "A new state selects no optional plugin. Existing selections remain in the persistent profile."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Runtime traffic",
+      "items": [
+        "IPv4 and IPv6 default to DROP; outbound access is limited to the local model gateway, the optional collector and configured local browser origins.",
+        "Cordis disables DeepSeek providers and search, remote session logging, OpenTelemetry and the Plugin Manager UI and tool. Selected plugins share this container policy."
+      ]
+    }
+  ]
+}

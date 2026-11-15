@@ -247,6 +247,19 @@ describe('maintained repository reference policy', () => {
     ])
   })
 
+  it('allows Archify JSON and HTML source revisions while checking their URLs and nearby Markdown', (test) => {
+    const fixture = repository(test)
+    fixture.write('.archify/architecture/candidate.json', `${fixture.commit}\n${organizationUrl}`)
+    fixture.write('.archify/architecture/diagram.html', `${fixture.commit}\n${organizationUrl}`)
+    fixture.write('.archify/architecture/notes.md', fixture.commit)
+
+    expect(scanRepositoryReferences(fixture.root)).toEqual([
+      { file: '.archify/architecture/candidate.json', line: 2, kind: 'organization-url' },
+      { file: '.archify/architecture/diagram.html', line: 2, kind: 'organization-url' },
+      { file: '.archify/architecture/notes.md', line: 1, kind: 'commit-hash' },
+    ])
+  })
+
   it.skipIf(process.platform === 'win32')('inspects dangling symlink targets without following files outside the tree', (test) => {
     const fixture = repository(test)
     symlinkSync(`../${fixture.commit}`, join(fixture.root, 'reference-link'))

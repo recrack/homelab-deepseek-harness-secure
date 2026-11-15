@@ -41,25 +41,13 @@ Loopback addresses refer to the DSH container. A browser page can still request 
 
 [homelab-dsh-plugins](https://github.com/recrack/homelab-dsh-plugins) owns the reviewed package snapshots and local hardening. The [Dockerfile](Dockerfile) fetches its pinned commit and builds the packages into the image; the launcher does not clone plugin sources when DSH starts.
 
-```mermaid
-flowchart LR
-  upstream["Upstream plugin projects"] -->|"reviewed and pinned"| catalog["homelab-dsh-plugins<br/>plugins.json and package snapshots"]
-  catalog -->|"Dockerfile fetches commit and runs build.sh"| image["dsh-offline image<br/>prebuilt local package roots"]
-  select["run.py --plugin ID"] -->|"explicit selection"| setup["entrypoint and profile_plugins.py"]
-  image --> setup
-  setup -->|"local dependencies and package links"| profile["persistent $DSH_HOME/profiles/web"]
-  setup -->|"bundle activation"| bundles["dsh.profile.bundles"]
-  setup -->|"active plugin IDs"| presets["prepare-presets.mjs<br/>generated Cordis overlay"]
-  profile --> dsh["dsh --profile web<br/>Cordis loads the composed profile"]
-  bundles --> dsh
-  presets --> dsh
-```
+The [Archify plugin build and activation diagram](../../.archify/architecture-dsh-plugin-activation-20261115-010540/architecture.html) shows the pinned snapshot, image build, explicit selection, profile wiring, and restricted runtime. Open the standalone HTML file in a browser from a local checkout.
 
 `run.py --plugin <id>` selects packages already present in the image; it does not download or build a package. At startup, [profile_plugins.py](profile_plugins.py) records selected packages as local dependencies, links their package roots into the persistent Web profile, and preserves existing selections. Bundle entries are added to `dsh.profile.bundles`; `dsh-browser` is added to the shipped Web presets through the generated overlay. The normal Cordis loader then loads the profile.
 
 Selected plugin code runs inside the DSH container and follows the container network policy described below. Plugins do not receive separate network access.
 
-The plugin repository's [`plugins.json`](https://github.com/recrack/homelab-dsh-plugins/blob/master/plugins.json) records upstream revisions and activation types; it does not populate the secure launcher's allowlist. To add a plugin, add its reviewed snapshot and build requirements to `homelab-dsh-plugins`, then update this repository's [image package links](Dockerfile), [launcher ID list](run.py), and [persistent profile package and bundle mappings](profile_plugins.py). Register every new ID in [prepare-presets.mjs](prepare-presets.mjs); add its preset row there when the plugin uses Web preset activation. Rebuild the image to include the package, then select it with `--plugin <id>`; the Plugin Manager UI and tool are not install paths in this deployment.
+The plugin repository's [`plugins.json`](https://github.com/recrack/homelab-dsh-plugins/blob/master/plugins.json) records upstream revisions and activation types; its [snapshot-to-runtime architecture](https://github.com/recrack/homelab-dsh-plugins/blob/master/README.md#how-the-secure-deployment-uses-these-packages) shows how those packages reach this deployment. The catalog does not populate the secure launcher's allowlist. To add a plugin, add its reviewed snapshot and build requirements to `homelab-dsh-plugins`, then update this repository's [image package links](Dockerfile), [launcher ID list](run.py), and [persistent profile package and bundle mappings](profile_plugins.py). Register every new ID in [prepare-presets.mjs](prepare-presets.mjs); add its preset row there when the plugin uses Web preset activation. Rebuild the image to include the package, then select it with `--plugin <id>`; the Plugin Manager UI and tool are not install paths in this deployment.
 
 The `dsh-context` snapshot keeps its context panels and blocks its automatic catalog, balance, and recommendation requests. The Baoyu plugins provide the local Artifacts page and design canvas. DSH Crew requires the running DSH hub and uses the selected local model for both worker tiers; it cannot fall back to a standalone DeepSeek runtime. The multimodal vision and image-generation providers are disabled.
 

@@ -30,11 +30,17 @@ function containsBlockedTerm(value: string): boolean {
   return value.normalize('NFKC').toLowerCase().includes(blockedTerm)
 }
 
+function isArchifySoftwareNotice(file: string, line: string): boolean {
+  return file.startsWith('.archify/')
+    && file.endsWith('/architecture.html')
+    && line.includes('<script type="application/json" id="archify-software-notices">')
+}
+
 /**
  * Find the blocked term in one maintained tracked file.
  * @param file - repository-relative tracked path.
  * @param source - text contents or symlink target.
- * @returns violations outside vendored sources, frozen Agent Notes, historical schemas and their checked generated regions.
+ * @returns Violations outside vendored sources, frozen Agent Notes, historical schemas, and generated software notices.
  */
 export function findConcreteTermViolations(file: string, source: string): ConcreteTermViolation[] {
   if (isExcluded(file)) return []
@@ -44,6 +50,7 @@ export function findConcreteTermViolations(file: string, source: string): Concre
   const schemaRegion = historicalSchemaRegion(file, source)
   for (const [index, line] of lines.entries()) {
     if (schemaRegion !== undefined && index >= schemaRegion[0] && index < schemaRegion[1]) continue
+    if (isArchifySoftwareNotice(file, line)) continue
     if (containsBlockedTerm(line)) violations.push({ file, line: index + 1 })
   }
   return violations
