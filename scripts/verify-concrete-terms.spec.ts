@@ -52,6 +52,16 @@ describe('concrete terminology policy', () => {
     )).toEqual([])
   })
 
+  it('checks Archify diagram text while allowing the embedded software notice', () => {
+    const file = '.archify/architecture/example/architecture.html'
+    const notice = `<script type="application/json" id="archify-software-notices">${blockedTerm}</script>`
+    expect(findConcreteTermViolations(file, `${notice}\n${blockedTerm}`)).toEqual([
+      { file, line: 2 },
+    ])
+    expect(findConcreteTermViolations('.archify/architecture/example/candidate.json', blockedTerm))
+      .toEqual([{ file: '.archify/architecture/example/candidate.json', line: 1 }])
+  })
+
   it('excludes vendored sources and frozen Agent Notes', () => {
     expect(findConcreteTermViolations(`vendor/example/${blockedTerm}.ts`, blockedTerm)).toEqual([])
     expect(findConcreteTermViolations(
