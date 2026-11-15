@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request as httpRequest } from 'node:http';
-import { collectorAddress, createEngineSearchProvider, createPublicProvider, validateCollectorResult } from './web-provider.mjs';
+import PublicWebProvider, { collectorAddress, createEngineSearchProvider, createPublicProvider, validateCollectorResult } from './web-provider.mjs';
 
 async function fixture(t, handler, options = {}) {
   const seen = [];
@@ -36,6 +36,39 @@ test('engine choices use DSH search providers and forward only the selected engi
     assert.equal(calls.at(-1).signal, controller.signal);
   }
   assert.throws(() => createEngineSearchProvider(collector, 'other'), /Unsupported local search engine/);
+});
+
+test('Cordis registration exposes all choices in the DSH provider lists and disposes them', () => {
+  const search = [], fetch = [], disposers = [];
+  const register = providers => provider => {
+    providers.push(provider);
+    return () => providers.splice(providers.indexOf(provider), 1);
+  };
+  const keys = ['DSH_COLLECTOR_URL', 'DSH_COLLECTOR_PROXY_TIMEOUT_MS', 'DSH_COLLECTOR_PROXY_MAX_BYTES'];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  process.env.DSH_COLLECTOR_URL = 'http://172.30.0.3:8080';
+  process.env.DSH_COLLECTOR_PROXY_TIMEOUT_MS = '360000';
+  process.env.DSH_COLLECTOR_PROXY_MAX_BYTES = '8000000';
+  try {
+    new PublicWebProvider({
+      web: { registerSearchProvider: register(search), registerFetchProvider: register(fetch) },
+      effect: setup => { disposers.push(setup()); },
+    });
+    assert.deepEqual(search.map(({ id, title }) => [id, title]), [
+      ['public-collector', 'SearXNG + RustXNG'],
+      ['dsh-searxng', 'SearXNG'],
+      ['dsh-rustxng', 'RustXNG'],
+    ]);
+    assert.deepEqual(fetch.map(({ id, title }) => [id, title]), [['public-collector', 'Approved public fetch']]);
+  } finally {
+    for (const dispose of disposers.reverse()) dispose();
+    for (const key of keys) {
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+    }
+  }
+  assert.deepEqual(search, []);
+  assert.deepEqual(fetch, []);
 });
 
 test('explicit URL/query alone cross the collector boundary, without private context or auth', async t => {
