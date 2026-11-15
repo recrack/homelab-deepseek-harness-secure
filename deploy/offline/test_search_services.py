@@ -6,16 +6,29 @@ from subprocess import CompletedProcess
 import tempfile
 import unittest
 
-from search_services import SearchServices, SOURCES, _matches_image, _port
+from search_services import (
+    SEARCH_CONFIGURATION_LABEL,
+    SEARCH_CONFIGURATION_VERSION,
+    SEARCH_ENGINE_LABEL,
+    SearchServices,
+    SOURCES,
+    _matches_image,
+    _port,
+)
 
 
 class SearchServiceTests(unittest.TestCase):
-    def test_reuse_requires_reviewed_digest_and_expected_port(self):
+    def test_reuse_requires_reviewed_digest_configuration_and_expected_port(self):
         searxng = {
             "Config": {
-                "Image": "docker.io/searxng/searxng@sha256:11ffedd387dc9cf99e881250c67861470384e55194a86f76df76aa0034a28a1a",
+                "Image": SOURCES["searxng"]["upstream_image"],
                 "ExposedPorts": {"8080/tcp": {}},
             },
+        }
+        self.assertFalse(_matches_image(searxng, "searxng"))
+        searxng["Config"]["Labels"] = {
+            SEARCH_ENGINE_LABEL: "searxng",
+            SEARCH_CONFIGURATION_LABEL: SEARCH_CONFIGURATION_VERSION,
         }
         self.assertTrue(_matches_image(searxng, "searxng"))
         self.assertEqual(_port(searxng, "searxng"), 8080)
@@ -24,17 +37,17 @@ class SearchServiceTests(unittest.TestCase):
         searxng["Config"]["ExposedPorts"] = {}
         self.assertIsNone(_port(searxng, "searxng"))
 
-    def test_reuses_reviewed_containers_and_detaches_them_at_close(self):
+    def test_reuses_dsh_configured_containers_and_detaches_them_at_close(self):
         network = "dsh-offline-run-search"
         services = {
             "searx-id": {
                 "Name": "/searx-service",
-                "Config": {"Image": "docker.io/searxng/searxng@sha256:11ffedd387dc9cf99e881250c67861470384e55194a86f76df76aa0034a28a1a", "ExposedPorts": {"8080/tcp": {}}},
+                "Config": {"Image": SOURCES["searxng"]["upstream_image"], "ExposedPorts": {"8080/tcp": {}}, "Labels": {SEARCH_ENGINE_LABEL: "searxng", SEARCH_CONFIGURATION_LABEL: SEARCH_CONFIGURATION_VERSION}},
                 "NetworkSettings": {"Networks": {"existing": {"IPAddress": "172.20.0.4"}}},
             },
             "rust-id": {
                 "Name": "/rust-service",
-                "Config": {"Image": "ghcr.io/sahenjp/rustxng@sha256:9ce389e9d96139734ec042f855be9dbd28a0316fba8a40fa89642271d82196dc", "ExposedPorts": {"29483/tcp": {}}},
+                "Config": {"Image": SOURCES["rustxng"]["upstream_image"], "ExposedPorts": {"29483/tcp": {}}, "Labels": {SEARCH_ENGINE_LABEL: "rustxng", SEARCH_CONFIGURATION_LABEL: SEARCH_CONFIGURATION_VERSION}},
                 "NetworkSettings": {"Networks": {"existing": {"IPAddress": "172.20.0.5"}}},
             },
         }
@@ -84,6 +97,26 @@ class SearchServiceTests(unittest.TestCase):
             self.assertNotIn("api.deepseek.com", text)
             manager.close()
 
+    def test_cached_pinned_upstream_image_is_tagged_without_cloning(self):
+        calls = []
+
+        def docker(*args, capture=False):
+            calls.append(args)
+            if args == ("image", "inspect", SOURCES["rustxng"]["image"]):
+                raise subprocess.CalledProcessError(1, args)
+            return CompletedProcess(args, 0, stdout="", stderr="")
+
+        with tempfile.TemporaryDirectory() as directory:
+            manager = SearchServices("dsh-offline-run", Path(directory), "dsh-offline:local", docker=docker)
+            manager._clone = lambda _engine: self.fail("A cached pinned image must not clone source")
+            manager._image("rustxng")
+
+        self.assertEqual(calls, [
+            ("image", "inspect", SOURCES["rustxng"]["image"]),
+            ("image", "inspect", SOURCES["rustxng"]["upstream_image"]),
+            ("image", "tag", SOURCES["rustxng"]["upstream_image"], SOURCES["rustxng"]["image"]),
+        ])
+
     def test_missing_services_build_pinned_sources_with_restricted_settings(self):
         services = {}
         calls = []
@@ -97,9 +130,14 @@ class SearchServiceTests(unittest.TestCase):
             elif args[0] == "run" and "--name" in args:
                 name = args[args.index("--name") + 1]
                 port = 8080 if name.endswith("searxng") else 29483
+                labels = {
+                    args[index + 1].split("=", 1)[0]: args[index + 1].split("=", 1)[1]
+                    for index in range(len(args) - 1)
+                    if args[index] == "--label"
+                }
                 services[name] = {
                     "Name": "/" + name,
-                    "Config": {"Image": args[args.index("--mount") + 2], "ExposedPorts": {f"{port}/tcp": {}}},
+                    "Config": {"Image": args[args.index("--mount") + 2], "ExposedPorts": {f"{port}/tcp": {}}, "Labels": labels},
                     "NetworkSettings": {"Networks": {}},
                 }
                 result = ""
@@ -133,6 +171,7 @@ class SearchServiceTests(unittest.TestCase):
             starts = [call for call in calls if call[0] == "run" and "--name" in call]
             self.assertEqual(len(starts), 2)
             self.assertTrue(all("--publish" not in call for call in starts))
+            self.assertTrue(all("--label" in call for call in starts))
             rust_config = Path(starts[1][starts[1].index("--mount") + 1].split("source=", 1)[1].split(",target=", 1)[0])
             self.assertIn('name = "deepseek"', rust_config.read_text())
             self.assertIn("disabled = true", rust_config.read_text())

@@ -70,7 +70,7 @@ For standard DSH plugin development, see [your first plugin](../../docs/user/dev
 
 ## Local search
 
-Search starts automatically by default. The launcher reuses running containers only when they use the reviewed SearXNG and RustXNG image digests, then connects them to a temporary internal network. If an engine is missing, the launcher clones its pinned source commit under `~/.cache/dsh-offline/search-services`, builds it, and starts it for the run. Managed containers stop and the temporary networks are removed when the launcher exits. `--search off` disables this behavior.
+Search starts automatically by default. The launcher reuses a running container only when its image digest and DSH configuration labels identify the reviewed offline settings; other existing containers are left untouched. Missing engines start from their pinned images, and the launcher clones their pinned source commits under `~/.cache/dsh-offline/search-services` only when an image is missing. Managed containers stop and temporary networks are removed when the launcher exits. `--search off` disables this behavior.
 
 Managed SearXNG keeps only Google, Bing, DuckDuckGo, and Brave. Managed RustXNG disables its DeepSeek search engine and research API, and uses direct fetch. Both engines can send the approved query to their configured public search providers; those providers see the query and the engine's public IP. Neither the DSH agent container nor the collector sends queries to DeepSeek APIs.
 

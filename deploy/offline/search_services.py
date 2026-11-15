@@ -1,4 +1,4 @@
-"""Reuse reviewed local search containers or build pinned upstream sources."""
+"""Reuse DSH-managed search containers or build pinned upstream sources."""
 from __future__ import annotations
 
 import json
@@ -15,17 +15,20 @@ SOURCES = {
         "url": "https://github.com/searxng/searxng.git",
         "commit": "219b63b207c98b85471de5abab773e76432f1961",
         "image": "dsh-offline/searxng:219b63b207c9",
-        "image_prefix": "docker.io/searxng/searxng",
+        "upstream_image": "docker.io/searxng/searxng@sha256:11ffedd387dc9cf99e881250c67861470384e55194a86f76df76aa0034a28a1a",
         "port": 8080,
     },
     "rustxng": {
         "url": "https://github.com/sahenjp/RustXNG.git",
         "commit": "97d330a76597dbabdd3426679c061cd560cd2e1b",
         "image": "dsh-offline/rustxng:97d330a76597",
-        "image_prefix": "ghcr.io/sahenjp/rustxng",
+        "upstream_image": "ghcr.io/sahenjp/rustxng@sha256:9ce389e9d96139734ec042f855be9dbd28a0316fba8a40fa89642271d82196dc",
         "port": 29483,
     },
 }
+SEARCH_ENGINE_LABEL = "org.deepseek-ai.dsh.search-engine"
+SEARCH_CONFIGURATION_LABEL = "org.deepseek-ai.dsh.search-configuration"
+SEARCH_CONFIGURATION_VERSION = "offline-v1"
 
 
 def _run(*args: str, capture: bool = False) -> subprocess.CompletedProcess:
@@ -43,11 +46,13 @@ def _port(container: dict, engine: str) -> int | None:
 
 
 def _matches_image(container: dict, engine: str) -> bool:
-    """Match only the pinned service image repository and reviewed digest."""
-    image = container.get("Config", {}).get("Image", "")
-    if engine == "searxng":
-        return image == "docker.io/searxng/searxng@sha256:11ffedd387dc9cf99e881250c67861470384e55194a86f76df76aa0034a28a1a"
-    return image == "ghcr.io/sahenjp/rustxng@sha256:9ce389e9d96139734ec042f855be9dbd28a0316fba8a40fa89642271d82196dc"
+    """Match a pinned image only when the DSH offline settings label is present."""
+    config = container.get("Config", {})
+    image = config.get("Image", "")
+    labels = config.get("Labels") or {}
+    if labels.get(SEARCH_ENGINE_LABEL) != engine or labels.get(SEARCH_CONFIGURATION_LABEL) != SEARCH_CONFIGURATION_VERSION:
+        return False
+    return image == SOURCES[engine]["upstream_image"]
 
 
 class SearchServices:
@@ -94,9 +99,14 @@ class SearchServices:
             self.docker("image", "inspect", source["image"], capture=True)
             return
         except subprocess.CalledProcessError:
-            checkout = self._clone(engine)
-            dockerfile = checkout / ("container/Dockerfile" if engine == "searxng" else "Dockerfile")
-            self.docker("build", "--pull=false", "--tag", source["image"], "--file", str(dockerfile), str(checkout))
+            try:
+                self.docker("image", "inspect", source["upstream_image"], capture=True)
+            except subprocess.CalledProcessError:
+                checkout = self._clone(engine)
+                dockerfile = checkout / ("container/Dockerfile" if engine == "searxng" else "Dockerfile")
+                self.docker("build", "--pull=false", "--tag", source["image"], "--file", str(dockerfile), str(checkout))
+            else:
+                self.docker("image", "tag", source["upstream_image"], source["image"])
 
     def _config(self, engine: str) -> Path:
         self.cache.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -158,6 +168,8 @@ disabled = true
         command = ["run", "--detach", "--rm", "--pull=never", "--name", name,
                    "--network", self.egress_network, "--cap-drop", "ALL",
                    "--security-opt", "no-new-privileges", "--pids-limit", "256",
+                   "--label", f"{SEARCH_ENGINE_LABEL}={engine}",
+                   "--label", f"{SEARCH_CONFIGURATION_LABEL}={SEARCH_CONFIGURATION_VERSION}",
                    "--mount", mount, source["image"]]
         if engine == "rustxng":
             command.extend(("--profile", "standard", "--bind", "0.0.0.0", "--port", str(source["port"])))
