@@ -10,7 +10,7 @@ The pull-request verdict in [CI](../../../../.github/workflows/ci.yml) normally 
 
 **DSH_CI_FAILOVER_LINUX** is a repository Actions variable. For the required PR job, **github** selects **ubuntu-24.04**, **blacksmith** selects Blacksmith's 8-vCPU Linux runner, **selfhosted** selects the **vm-backup** pool for non-Dependabot PRs, and an unset or unrecognized value keeps **ubuntu-latest**. Other workflows use only the values they explicitly handle; see the [Blacksmith failover note](2026-09-09-blacksmith-failover-leg.md) for participating jobs.
 
-The exhaustive Linux suite runs after pushes to master on the dedicated **serial-linux-selfhosted** lane. It is a persistent standby check and does not depend on this variable. The keyless Python suites and benchmark jobs also run after merge. GitHub Actions does not schedule Windows or Wine tests; native Windows release builds remain on hosted Windows runners.
+The exhaustive Linux suite runs after pushes to master on the **serial-linux-selfhosted** lane. It normally uses **vm-backup**; when the variable is **github**, it uses **ubuntu-24.04** and installs Playwright's system dependencies on that ephemeral runner. Other values keep the self-hosted route. The keyless Python suites and benchmark jobs also run after merge. GitHub Actions does not schedule Windows or Wine tests; native Windows release builds remain on hosted Windows runners.
 
 ### Switch runners
 
@@ -22,7 +22,7 @@ The **selfhosted** route executes PR code on a persistent machine and excludes D
 
 ### In-house runner
 
-**vm-backup** is one shared Linux VM with multiple systemd-managed runner instances, so registrations add scheduling slots rather than CPU or memory. The image must include the Linux packages needed by Playwright Chromium and WebKit; workflows download the lockfile-selected browsers and do not install system packages on this persistent host. Check the latest **serial-linux-selfhosted** result before relying on the pool.
+**vm-backup** is one shared Linux VM with multiple systemd-managed runner instances, so registrations add scheduling slots rather than CPU or memory. When the full suite uses this pool, the image must include the Linux packages needed by Playwright Chromium and WebKit; workflows download the lockfile-selected browsers and do not install system packages on this persistent host. Check the latest **serial-linux-selfhosted** result before relying on the pool.
 
 The release rehearsal workflows may also use **vm-backup** for eligible, credential-free same-repository PRs and master pushes when the variable is **selfhosted**. Their publication jobs stay hosted. Distinct refs can add concurrent load, so check host capacity before leaving the variable set during an incident.
 

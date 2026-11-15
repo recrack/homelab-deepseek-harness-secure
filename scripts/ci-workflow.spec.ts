@@ -46,7 +46,7 @@ describe('CI workflow', () => {
 
     const fullSuite = workflowJob(workflow, 'serial-linux-selfhosted')
     expect(fullSuite.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/master'")
-    expect(fullSuite['runs-on']).toEqual(['self-hosted', 'linux', 'x64', 'vm-backup'])
+    expect(fullSuite['runs-on']).toContain("vars.DSH_CI_FAILOVER_LINUX == 'github'")
     expect(fullSuite.steps).toContainEqual(expect.objectContaining({ run: 'pnpm run check:ci:linux-primary' }))
 
     const benchmarks = workflowJob(workflow, 'benchmarks')
@@ -59,6 +59,24 @@ describe('CI workflow', () => {
     expect(benchmarks.needs).toBeUndefined()
     expect(benchmarks.steps).toContainEqual(expect.objectContaining({ run: 'pnpm run check:ci:bench' }))
     expect(JSON.stringify(workflow.jobs)).not.toMatch(/windows-2025|win-x64|wine-windows-gates|check:windows-wine/i)
+  })
+
+  it('routes the master Linux suite to GitHub-hosted Ubuntu when failover is github', () => {
+    const workflow = loadWorkflow('.github/workflows/ci-master.yml')
+    const fullSuite = workflowJob(workflow, 'serial-linux-selfhosted')
+    const selector = fullSuite['runs-on']
+    const context = {
+      vars: { DSH_CI_FAILOVER_LINUX: 'github' },
+      fromJSON: (value: string): unknown => {
+        if (value !== '["self-hosted", "linux", "x64", "vm-backup"]') {
+          throw new TypeError(`Unexpected runner labels: ${value}`)
+        }
+        return ['self-hosted', 'linux', 'x64', 'vm-backup']
+      },
+    }
+    expect(evaluateRunsOn(selector, context)).toBe('ubuntu-24.04')
+    expect(evaluateRunsOn(selector, { ...context, vars: { DSH_CI_FAILOVER_LINUX: 'selfhosted' } }))
+      .toEqual(['self-hosted', 'linux', 'x64', 'vm-backup'])
   })
 
   it('runs Python SDK and runtime checks only after a master push', () => {

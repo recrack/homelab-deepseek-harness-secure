@@ -47,32 +47,30 @@ jobs:
       targets: node24-linux-arm64,node24-macos-arm64,node24-macos-x64
       ci: true
 
-  # Hot-standby drill for the in-house self-hosted pool: every master move
-  # re-runs the complete unsharded aggregate on the persistent 64-core VM,
-  # continuously proving that environment can take over a required lane if
-  # the hosted pools degrade (the switch is then setting the writer-manageable
-  # DSH_CI_FAILOVER_LINUX variable — see the failover runbook, no merge required).
+  # Every master push runs the complete unsharded Linux aggregate. It uses the
+  # persistent vm-backup pool by default; DSH_CI_FAILOVER_LINUX=github routes it
+  # to ubuntu-24.04 when the repository selects GitHub-hosted runners.
   # Push-triggered, so this lane always executes the base branch's own
   # workflow definition. This workflow never listens to pull_request, so the
-  # drill does not appear in PR checks. No cache steps because the VM's
-  # persistent pnpm store and tool caches make them redundant (and saving here
-  # would poison the hosted cache namespace with self-hosted paths).
+  # full suite does not appear in PR checks. The self-hosted path uses its
+  # persistent pnpm store; the GitHub route uses an ephemeral store, and neither
+  # path writes an Actions cache.
   serial-linux-selfhosted:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    name: serial / linux (self-hosted standby)
-    runs-on: [self-hosted, linux, x64, vm-backup]
+    name: serial / linux (full suite)
+    runs-on: >-
+      ${{ vars.DSH_CI_FAILOVER_LINUX == 'github' && 'ubuntu-24.04'
+          || fromJSON('["self-hosted", "linux", "x64", "vm-backup"]') }}
     steps:
-      # DSH_ARCHIVE_BASE_REF below compares the frozen-archive gate against
+      # DSH_ARCHIVE_BASE_REF compares the frozen-archive gate against
       # github.event.before, so full history is required: depth 2 would miss it
-      # on multi-commit or force pushes; full fetch is cheap here because
-      # checkout resolves against the VM's local mirror.
+      # on multi-commit or force pushes.
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
       # Redirect the Node compile cache (enabled by pnpm and TypeScript) off
       # the root partition's /tmp before the first pnpm call in this lane.
-      # see .github/workflows/ci.yml.
       - name: Redirect Node compile cache to runner temp
         run: echo "NODE_COMPILE_CACHE=${{ runner.temp }}/node-compile-cache" >> "$GITHUB_ENV"
 
@@ -84,15 +82,19 @@ jobs:
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
 
-      - name: Configure persistent pnpm store
+      - name: Configure pnpm store
         run: echo "PNPM_CONFIG_STORE_DIR=$HOME/.local/share/pnpm/store" >> "$GITHUB_ENV"
 
       - name: Install (immutable)
         run: pnpm install --frozen-lockfile
 
-      # The persistent VM image owns Playwright's Linux system packages; this
-      # step also proves that browser provisioning remains usable for failover.
-      - name: Install Playwright Chromium and WebKit
+      # Hosted runners install browser dependencies; vm-backup preinstalls them.
+      - name: Install Playwright Chromium and WebKit with system dependencies
+        if: vars.DSH_CI_FAILOVER_LINUX == 'github'
+        run: pnpm --filter @deepseek-ai/dsh-web-frontend exec playwright install --with-deps chromium webkit
+
+      - name: Install Playwright Chromium and WebKit from the lockfile
+        if: vars.DSH_CI_FAILOVER_LINUX != 'github'
         run: pnpm --filter @deepseek-ai/dsh-web-frontend exec playwright install chromium webkit
 
       - name: Prepare bubblewrap (unrestrict userns)
