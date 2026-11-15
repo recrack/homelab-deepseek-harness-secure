@@ -55,8 +55,15 @@ describe('CI scheduling policy', () => {
 
     const fullSuite = master.jobs['serial-linux-selfhosted']!
     expect(fullSuite.if).toBe(masterPush)
-    expect(fullSuite['runs-on']).toEqual(['self-hosted', 'linux', 'x64', 'vm-backup'])
+    expect(fullSuite.name).toBe('serial / linux (full suite)')
+    expect(fullSuite['runs-on']).toContain("vars.DSH_CI_FAILOVER_LINUX == 'github'")
+    expect(fullSuite['runs-on']).toContain('ubuntu-24.04')
+    expect(fullSuite['runs-on']).toContain('vm-backup')
     expect(commands(fullSuite)).toContain('pnpm run check:ci:linux-primary')
+    expect(fullSuite.steps).toContainEqual(expect.objectContaining({
+      if: "vars.DSH_CI_FAILOVER_LINUX == 'github'",
+      run: 'pnpm --filter @deepseek-ai/dsh-web-frontend exec playwright install --with-deps chromium webkit',
+    }))
 
     const benchmarks = master.jobs.benchmarks!
     expect(benchmarks).toMatchObject({
