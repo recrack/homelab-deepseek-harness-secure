@@ -80,8 +80,8 @@ const windowsUnsupportedCoveragePackages = process.platform === 'win32'
 
 // Windows-only packages: their sources execute exclusively on win32 (koffi
 // loads Win32 libraries), so the Linux coverage lane can never cover them.
-// The Windows dev/CI lane exercises them through the probe/runner suites; the
-// per-file 100% gate must not fail on their Linux-uncovered paths.
+// Native Windows runs exercise them through the probe/runner suites; the
+// per-file 100% gate must not fail on paths Linux cannot execute.
 const windowsOnlyCoverageExclusions = process.platform !== 'win32'
   ? [
       'packages/sandbox/sandbox-windows-acl/src/**/*.ts',

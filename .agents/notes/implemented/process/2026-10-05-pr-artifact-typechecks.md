@@ -8,7 +8,7 @@ PR jobs need the same compiled packages for benchmarks, compatibility, packaging
 
 ## Decision
 
-Required Linux consumer and native Windows build jobs retain normal builds, including both complete aggregate programs. Public `build` and `typecheck` keep the same checks. [Node version ownership](2026-10-15-node-24-runtime-floor.md) and [native Windows ownership](2026-08-08-native-windows-pull-request-ci.md) remain in force.
+Pull-request CI runs the public `typecheck` command, and the master Linux suite runs the complete repository build. Pull-request release rehearsals still use checked `build:artifacts`. [Node version ownership](2026-10-15-node-24-runtime-floor.md) and the [current CI schedule](2026-11-15-pr-minimum-post-merge-ci.md) own their respective policies.
 
 Checked PR artifact builds compile every existing project reference from each compiler face with one serial `tsc -b` process, then run the ordinary Typert, bundling, Desktop, and Web stages. The helper reads the existing Host and Client aggregates rather than maintaining another package list. It omits only each root's additional test and script program; package diagnostics, emitted outputs, and Host-before-Client ordering remain required. Non-PR release and real-API workflow builds retain their normal checks. That artifact build is `pnpm run build:artifacts`; [the build split](2026-10-11-build-artifacts-check-split.md) owns its steps and scheduling.
 
@@ -16,9 +16,9 @@ Only the CI benchmark helper selects `tsc -b --noCheck` for package emission. Be
 
 The Python executable builder selects `build:artifacts` artifact compilation with `--build-artifacts` after verifying its runtime closure. Invalid closure inputs fail before compilation, deployment, or packing; the default complete build and prebuilt `--skip-build` mode keep their existing stages.
 
-PR artifact builds in CI invoke the root manifest's `build:artifacts`; a PR that edits these root manifest scripts activates the separate native-addon platform matrix, a trade-off [the build split](2026-10-11-build-artifacts-check-split.md) records. The vendor rehearsal and benchmark lanes invoke the internal build helpers directly.
+Pull-request release rehearsals invoke the root manifest's `build:artifacts`; a PR that edits these root manifest scripts activates the separate native-addon platform matrix, a trade-off [the build split](2026-10-11-build-artifacts-check-split.md) records. The vendor rehearsal and post-merge benchmark job invoke the internal build helpers directly.
 
-Benchmark sample counts stay fixed. The Linux artifact consumers emit artifacts only; the aggregate test and script type checks belong to the master lanes, and lint plus duplication run in their own lane, which compiles package declarations because oxlint's type-aware rules read them, so a red lint no longer costs a rerun of the snapshot and artifact consumers. The two compatibility cases run one job at a time; both x64 Python runtime targets start after the keyless Python SDK job succeeds in CI Python. Five Linux lanes, one compatibility job, three Windows lanes, and the Python SDK job permit at most eleven worker jobs initially. Once the SDK job finishes, those five Linux lanes, one compatibility job, and three Windows lanes run beside the two runtime targets, permitting at most eleven. Each runtime caller's plan and wheel stages precede its target and each use one job. This permits runtime validation to overlap the Node 24.9 build within the eleven-job ceiling. Coverage partitions reuse compact file-cost metadata within their platform and runner pool. Parallel release packing uses pnpm's existing bounded scheduler; serial publication keeps family order.
+Benchmark sample counts stay fixed. Pull-request release rehearsals compile artifacts, while pull-request `typecheck` and the post-merge Linux suite own aggregate type diagnostics. The master benchmark job remains separate so measurements use an otherwise idle runner. The Linux x64 Python runtime starts after the master Python SDK suite succeeds; Linux ARM64 and both macOS runtimes run in the master workflow. Coverage partitions reuse compact file-cost metadata within their platform and runner pool. Parallel release packing uses pnpm's existing bounded scheduler; serial publication keeps family order.
 
 Each Node version runs the same eight source compatibility specs in one serial Vitest invocation. Both file parallelism and the CLI worker limit are fixed to one, and the gate sets `VITEST_MAX_WORKERS=1` because that environment variable overrides Vitest's CLI limit. Files retain fork isolation; the build-backed Node 24.9 lazy-search smoke keeps its separate build dependency. The original seven-spec paired samples preserve all 253 assertion outcomes and reduce startup-only median time from 11.52 to 8.69 seconds, without increasing owned descendant-process peak.
 
@@ -26,7 +26,7 @@ Each Node version runs the same eight source compatibility specs in one serial V
 
 **Raise job or worker concurrency.** Rejected because the shared runner must keep its current resource ceiling.
 
-**Remove aggregate checks from every build.** Rejected because package projects do not typecheck all repository tests and scripts; required Linux and Windows jobs must retain those diagnostics.
+**Remove aggregate checks from every build.** Rejected because package projects do not typecheck all repository tests and scripts; pull-request `typecheck` and the post-merge Linux suite retain those diagnostics.
 
 **Cache compiled outputs across revisions.** Deferred because cache correctness and invalidation add obligations that removing duplicate aggregate work does not need.
 
@@ -40,4 +40,4 @@ Parallel packing relies on the pinned pnpm CLI to honor exact recursive filters,
 
 Coverage weights sum Vitest's distinct environment, preparation, setup, collection, and execution costs. CI's platform/environment/pool cache prefixes exclude the previous `coverage-times-<run>` archives. Persistent local checkouts can retain wall-clock weights for files not measured during rollout; removing `.coverage-times.json` resets that history. These advisory weights affect partition assignment, while the complete inventory and merged coverage thresholds remain required.
 
-Checked artifact builds deliberately do not diagnose aggregate-only test or script errors. Required normal builds reject those errors; fixture checks also reject package errors on both paths and compare emitted JavaScript, declarations, maps, and build information. Removing or changing a required full build requires transferring both aggregate checks to another blocking owner first. Master serial references remain complete under their [existing policy](2026-07-21-serial-cross-platform-ci-reference.md).
+The current pull-request and post-merge schedule is recorded in the [CI policy note](2026-11-15-pr-minimum-post-merge-ci.md).

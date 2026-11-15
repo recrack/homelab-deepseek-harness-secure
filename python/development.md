@@ -29,7 +29,7 @@ LibreOffice Kit CI owns visible Office content checks through its installed Node
 
 Set `DSH_OFFICE_TEST_ARTIFACTS` to a new directory to retain the installed-wheel smoke's Office inputs, PNGs, manifests, and failure diagnostics. CI uploads these files on success and failure; temporary runtime files are excluded.
 
-That suite drives fake runtime peers. `scripts/smoke-python-runtime.py` drives the packaged runtime instead. The `python-runtime` CI jobs build Linux x64 and Windows x64 on pull requests, and Linux arm64 plus both macOS architectures on master pushes. Each selected target installs the matching SDK and runtime wheels into a new Python 3.10 virtual environment, runs outside the checkout with `PYTHONPATH` and `DSH_RUNTIME_MODE` unset, proves that both modules and the executable came from those distributions, and then runs every keyless scenario. A focused local source-SDK run can select one built executable and scenario:
+That suite drives fake runtime peers. `scripts/smoke-python-runtime.py` drives the packaged runtime instead. After merge, the `python-runtime` CI jobs build Linux x64, Linux arm64, and both macOS architectures; releases retain the Windows x64 target. Each selected target installs the matching SDK and runtime wheels into a new Python 3.10 virtual environment, runs outside the checkout with `PYTHONPATH` and `DSH_RUNTIME_MODE` unset, proves that both modules and the executable came from those distributions, and then runs every keyless scenario. Automated Windows runtime tests are not scheduled by CI. A focused local source-SDK run can select one built executable and scenario:
 
 ```sh
 uv run --project python/sdk python scripts/smoke-python-runtime.py \
@@ -42,7 +42,7 @@ SDK scenarios compare committed expected output under `scripts/snapshots/python-
 
 The `advanced` and `restart` comparisons match native delivery qualifiers against each input's own Session generation, including SDK events and notifications. Captured and other delivery generations retain their numeric values. Each side must use one generation across its Session roles, and fresh logs must identify the current writer. Comparison never rewrites committed recordings.
 
-Trusted pull requests and master pushes also run `--scenario sdk-live --installed-wheel` on each selected native target. That scenario performs two tool-using turns against `https://api.deepseek.com`: it checks the created file immediately, replaces its content with a host-only random challenge, and requires the second turn to copy the changed content into a fresh receipt without modifying the source. Both turns must complete with the exact sentinel answer and a model-requested tool call; external byte comparisons check the files. Missing repository secrets fail instead of self-skipping. Fork and Dependabot pull requests run the complete keyless installed-wheel path but receive no key.
+The installed-wheel CI scenarios use a local deterministic SSE model and need no provider credentials. The `sdk-live` scenario remains an opt-in local real-provider check; GitHub Actions does not run it or receive provider credentials.
 
 An interactive smoke test needs `DEEPSEEK_API_KEY` in the environment or repository-root `.env`:
 

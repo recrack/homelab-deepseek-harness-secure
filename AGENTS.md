@@ -97,7 +97,7 @@ pnpm run build          # build:artifacts + build:check, concurrently
 pnpm run build:artifacts # artifacts: tsc emits lib/types, tsdown bundles runtime, Web
 pnpm run build:check    # typecheck aggregate tests/scripts against current build:artifacts output
 pnpm run hygiene        # publint + workspace/package/dependency checks + NodeNext consumer check
-pnpm run check:windows-wine  # ONLY when diagnosing a known Windows failure (needs wine); CI owns this signal
+pnpm run check:windows-wine  # ONLY for a local Windows compatibility diagnostic (needs wine); not in CI
 pnpm run doc-sync       # documentation gates (scripts/run-gates.ts)
 pnpm run test:docs      # quick documentation checks (no build; doc-quick aggregate)
 pnpm run website:build  # VitePress build (doubles as dead-link check)
@@ -116,7 +116,7 @@ If a required `gh`, `pnpm`, build, test, or generator command fails because the 
 Before pushing, follow [dsh-pre-push-checks](.agents/skills/dsh-pre-push-checks/SKILL.md); report only commands run. After `gh stack sync`, validate immediately; do not merge before checks pass.
 
 - Match evidence to each surface: focused tests, snapshots, `doc-sync`, built smokes, and mock-provider checks.
-- Never default to the full suite or repeat a passing check for commit or push. CI owns exhaustive coverage and the platform matrix; rehearse all locally only by explicit request, for CI diagnosis, or for an irreducibly repository-wide change.
+- PR CI runs typecheck, lint, and docs; master CI runs exhaustive Linux/Python suites, coverage, snapshots, and benchmarks. CI schedules no Windows tests. Do not repeat passing checks for commit or push; run the full suite locally only by request, during CI diagnosis, or for repository-wide changes.
 - `test:coverage`, not `test`, is the CI coverage gate ([why](docs/testing.md)).
 - Develop with `build:artifacts`; before claiming completion, run `build:check` after the latest `build:artifacts`, or `build` ([layout](docs/development.md#typescript-project-layout)).
 - **Web browser automation and GIF recording:** launch with `pnpm dsh web --patch apps/web/tests/pin-browse-picker.overlay.yml` to use the [in-page directory picker](apps/web/tests/pin-browse-picker.overlay.yml); omit this override only when testing native picker behavior explicitly.

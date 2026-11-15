@@ -1,10 +1,8 @@
-/** Scheduling policy for post-merge native runtime carriers and Wine. */
-import { readFileSync } from 'node:fs'
+/** Scheduling policy for pull-request and post-merge CI. */
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { runInNewContext } from 'node:vm'
 import { load } from 'js-yaml'
 import { describe, expect, it } from 'vitest'
-import { gatesForMode } from '../run-gates.ts'
 
 const root = resolve(import.meta.dirname, '../..')
 const masterPush = "github.event_name == 'push' && github.ref == 'refs/heads/master'"
@@ -12,19 +10,17 @@ const runtimeBuilder = './.github/workflows/build-exe-for-python-sdk.yml'
 
 interface Job {
   if?: string | boolean
+  name?: string
   uses?: string
   needs?: string[]
   with?: Record<string, unknown>
-  secrets?: Record<string, string>
-  steps?: Array<{ name?: string; run?: string; if?: string; uses?: string; with?: Record<string, unknown> }>
+  steps?: Array<{ name?: string; run?: string; uses?: string; with?: Record<string, unknown> }>
   'runs-on'?: string | string[]
-  'continue-on-error'?: boolean
 }
 
 interface Workflow {
   on: Record<string, unknown>
   jobs: Record<string, Job>
-  concurrency?: Record<string, unknown>
 }
 
 function workflow(name: string): Workflow {
@@ -35,122 +31,78 @@ function commands(job: Job): string[] {
   return (job.steps ?? []).flatMap(step => step.run ? [step.run] : [])
 }
 
-// These boolean/string cases share Actions and JavaScript semantics. GitHub
-// supplies status functions; this probe is not a general Actions interpreter.
-function evaluateCondition(expression: string, cancelled: boolean, results: string[], event = 'pull_request'): boolean {
-  const source = expression.trim().replace(/^[$][{][{]|[}][}]$/g, '')
-    .replaceAll('needs.*.result', 'results')
-  return runInNewContext(source, {
-    cancelled: () => cancelled,
-    always: () => true,
-    contains: (values: string[], value: string) => values.includes(value),
-    results,
-    github: { event_name: event },
-  }, { timeout: 1000 }) as boolean
-}
-
-const verdicts = [['ci.yml', 'all-checks-passed'], ['ci-windows.yml', 'windows-checks-passed'], ['ci-python.yml', 'python-checks-passed']] as const
-
-describe('master-only platform scheduling', () => {
-  it.each(verdicts.flatMap(([file, job]) => ['success', 'failure', 'skipped', 'cancelled'].map(result => [file, job, result] as const)))(
-    '%s %s reports %s dependencies in active runs but never starts a cancelled-run verdict', (file, job, result) => {
-      const aggregate = workflow(file).jobs[job]!
-      const results = aggregate.needs!.map(() => 'success')
-      results[0] = result
-      const condition = aggregate.if as string
-      // A status function prevents Actions from implicitly gating on success().
-      expect(condition).toContain('!cancelled()')
-      expect(evaluateCondition(condition, false, results)).toBe(true)
-      expect(evaluateCondition(condition, true, results)).toBe(false)
-      expect(evaluateCondition(condition, false, results, 'push')).toBe(false)
-      const failureStep = aggregate.steps!.find(step => step.name === 'Fail if any needed job did not succeed')!
-      expect(evaluateCondition(failureStep.if!, false, results)).toBe(result !== 'success')
-      expect(failureStep.run).toContain('exit 1')
-    },
-  )
-
-  it('distinguishes the obsolete always verdict from the cancellable status guard', () => {
-    expect(evaluateCondition("always() && github.event_name == 'pull_request'", true, ['success'])).toBe(true)
-    expect(evaluateCondition(workflow('ci.yml').jobs['all-checks-passed']!.if as string, true, ['success'])).toBe(false)
-  })
-
-  it('keeps the required Python PR verdict and its two x64 targets in CI Python', () => {
-    const pr = workflow('ci-python.yml')
+describe('CI scheduling policy', () => {
+  it('runs only quick Linux checks for pull requests', () => {
+    const pr = workflow('ci.yml')
     expect(Object.keys(pr.on)).toEqual(['pull_request'])
-    expect(pr.jobs['python-runtime']).toMatchObject({
-      if: "github.event_name == 'pull_request'",
-      uses: runtimeBuilder,
-      with: { ci: true, targets: 'node24-linux-x64,node24-win-x64' },
-    })
-    expect(pr.jobs.windows).toBeUndefined()
-    expect(JSON.stringify(pr.jobs)).not.toMatch(/wine-windows-gates|check:windows-wine/)
-    const aggregate = pr.jobs['python-checks-passed']!
-    expect(aggregate.needs).toContain('python-runtime')
-    expect(aggregate.needs).not.toContain('windows')
-    expect(aggregate.needs!.every(id => id in pr.jobs)).toBe(true)
-    expect(aggregate.if).toBe("${{ !cancelled() && github.event_name == 'pull_request' }}")
-    expect(aggregate.steps).toContainEqual(expect.objectContaining({
-      if: "contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')",
-    }))
-    for (const file of ['ci.yml', 'ci-windows.yml']) {
-      expect(workflow(file).jobs['python-runtime']).toBeUndefined()
-    }
+    expect(Object.keys(pr.jobs)).toEqual(['all-checks-passed'])
+
+    const checks = pr.jobs['all-checks-passed']!
+    expect(checks.name).toBe('all checks passed')
+    expect(commands(checks)).toEqual([
+      'pnpm install --frozen-lockfile',
+      'pnpm run typecheck',
+      'pnpm run lint',
+      'pnpm run test:docs',
+    ])
+    expect(JSON.stringify(checks)).not.toMatch(/windows|win-x64|wine|check:ci:/i)
   })
 
-  it('runs all three deferred carriers on master pushes with keyless checks', () => {
+  it('runs the exhaustive Linux suite and benchmarks after a master push', () => {
     const master = workflow('ci-master.yml')
     expect(master.on.push).toEqual({ branches: ['master'] })
     expect(Object.keys(master.on).sort()).toEqual(['push', 'workflow_dispatch'])
-    const runtime = master.jobs['python-runtime']!
-    expect(runtime).toMatchObject({
+
+    const fullSuite = master.jobs['serial-linux-selfhosted']!
+    expect(fullSuite.if).toBe(masterPush)
+    expect(fullSuite['runs-on']).toEqual(['self-hosted', 'linux', 'x64', 'vm-backup'])
+    expect(commands(fullSuite)).toContain('pnpm run check:ci:linux-primary')
+
+    const benchmarks = master.jobs.benchmarks!
+    expect(benchmarks).toMatchObject({
+      if: masterPush,
+      name: 'node 24 / benchmarks',
+      'runs-on': 'ubuntu-24.04',
+      'timeout-minutes': 20,
+    })
+    expect(benchmarks.needs).toBeUndefined()
+    expect(commands(benchmarks)).toContain('pnpm run check:ci:bench')
+    const report = benchmarks.steps?.find(step => step.uses === 'actions/upload-artifact@v7.0.1')
+    expect(report).toMatchObject({ with: { name: 'benchmark-report' } })
+  })
+
+  it('runs Python SDK and Linux x64 checks after a master push', () => {
+    const python = workflow('ci-python.yml')
+    expect(python.on.push).toEqual({ branches: ['master'] })
+    expect(Object.keys(python.on)).toEqual(['push'])
+    expect(python.jobs['python-sdk']!.if).toBe(masterPush)
+    expect(commands(python.jobs['python-sdk']!)).toContain(
+      'uv run --python 3.10 --group test --project python/sdk pytest',
+    )
+    expect(python.jobs['python-runtime']).toMatchObject({
+      if: masterPush,
+      uses: runtimeBuilder,
+      with: { ci: true, targets: 'node24-linux-x64' },
+    })
+    expect(python.jobs['python-checks-passed']!.needs).toEqual(['python-sdk', 'python-runtime'])
+
+    const masterRuntime = workflow('ci-master.yml').jobs['python-runtime']!
+    expect(masterRuntime).toMatchObject({
       if: masterPush,
       uses: runtimeBuilder,
       with: { ci: true, targets: 'node24-linux-arm64,node24-macos-arm64,node24-macos-x64' },
     })
-    expect(runtime.secrets).toBeUndefined()
-    expect(runtime.needs).toBeUndefined()
-    expect(runtime['continue-on-error']).toBeUndefined()
-    const builder = workflow('build-exe-for-python-sdk.yml')
-    expect(builder.concurrency?.['cancel-in-progress']).toBe(
-      '${{ !inputs.release }}',
-    )
-    const build = builder.jobs.build!
-    expect(build.steps!.map(step => step.name)).toContain('Run installed-wheel keyless black-box tests (POSIX)')
-    expect(build.steps!.map(step => step.name)).not.toContain('Preflight installed-wheel real API test (POSIX)')
   })
 
-  it('runs Wine once on hosted master CI and seeds its own apt cache', () => {
-    const master = workflow('ci-master.yml')
-    const wine = master.jobs.windows!
-    expect(wine).toMatchObject({
-      if: "(github.event_name == 'push' && github.ref == 'refs/heads/master') || (github.event_name == 'workflow_dispatch' && inputs.suite == 'wine')",
-      'runs-on': 'ubuntu-latest',
-    })
-    expect(wine.needs).toBeUndefined()
-    expect(wine['continue-on-error']).toBeUndefined()
-    expect(master.jobs['wine-apt-cache']).toBeUndefined()
-    expect(Object.values(master.jobs).flatMap(commands).filter(command => command.includes('wine-windows-gates.sh')))
-      .toEqual(['bash scripts/wine-windows-gates.sh'])
-    expect(wine.steps).toContainEqual(expect.objectContaining({
-      uses: 'actions/cache@v6.1.0', with: { path: '~/wine-debs', key: '${{ steps.wine-cache-key.outputs.key }}' },
-    }))
-    expect(commands(wine).join('\n')).toContain('--download-only wine')
-    expect(wine.steps).toContainEqual(expect.objectContaining({ name: 'Shut down wineserver', if: 'always()' }))
-    // Graph construction needs a pnpm entrypoint but never launches it.
-    const previous = process.env.npm_execpath
-    process.env.npm_execpath = '/test/pnpm.cjs'
-    try {
-      for (const mode of ['ci-linux-primary', 'ci-windows-complete'] as const) {
-        expect(gatesForMode(mode).map(gate => gate.displayCommand).join('\n')).not.toMatch(/wine/i)
-      }
-    } finally {
-      if (previous === undefined) Reflect.deleteProperty(process.env, 'npm_execpath')
-      else process.env.npm_execpath = previous
+  it('does not schedule Windows or Wine jobs in CI', () => {
+    expect(existsSync(resolve(root, '.github/workflows/ci-windows.yml'))).toBe(false)
+    for (const file of ['ci.yml', 'ci-python.yml', 'ci-master.yml']) {
+      const current = workflow(file)
+      expect(JSON.stringify(current.jobs), file).not.toMatch(/windows-2025|win-x64|wine-windows-gates|check:windows-wine/i)
     }
-    expect(process.env.npm_execpath).toBe(previous)
   })
 
-  it('retains the complete release matrix independently of CI scheduling', () => {
+  it('keeps the complete Python runtime matrix in release workflows', () => {
     const release = workflow('python-release.yml')
     const calls = Object.values(release.jobs).filter(job => job.uses === runtimeBuilder)
     expect(calls).toHaveLength(1)
