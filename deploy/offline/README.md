@@ -84,6 +84,8 @@ export DSH_SEARCH_NETWORK=search-local-only
 
 Manually configured engines must listen on private IPv4 addresses and expose the SearXNG-compatible `/search` JSON endpoint. A query beginning with `searxng:` or `rustxng:` selects one engine; other queries are sent to both and results are merged. The exact submitted query is shown for approval first. The collector sends only that query and result limit to the local engines, without cookies, credentials, conversation history, files, or logs.
 
+The existing DSH **Settings → Web search provider** menu offers **SearXNG**, **RustXNG**, and **SearXNG + RustXNG**. The combined provider is the default. These entries use DSH's existing `ctx.web.registerSearchProvider()` extension point; no DSH core or custom settings UI changes are needed. Every choice still queues the query in the same approval collector, and the selected engine receives it only after approval. The separate Web fetch provider remains **Approved public fetch**.
+
 The collector can also fetch a public HTTP(S) URL after explicit approval. DeepSeek root and subdomains, including `api.deepseek.com`, are rejected before approval or DNS. The collector has no public-search fallback. The temporary search Docker network contains only the selected search services and is removed at exit.
 
 ## Research with DSH

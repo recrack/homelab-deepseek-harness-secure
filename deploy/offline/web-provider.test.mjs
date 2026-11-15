@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request as httpRequest } from 'node:http';
-import { collectorAddress, createPublicProvider, validateCollectorResult } from './web-provider.mjs';
+import { collectorAddress, createEngineSearchProvider, createPublicProvider, validateCollectorResult } from './web-provider.mjs';
 
 async function fixture(t, handler, options = {}) {
   const seen = [];
@@ -18,6 +18,25 @@ async function fixture(t, handler, options = {}) {
 }
 const fetchResult = { url: 'https://example.com/', statusCode: 200, body: { kind: 'text', content: 'public' }, truncated: false };
 function reply(response, value, status = 200) { response.writeHead(status, { 'Content-Type': 'application/json' }); response.end(JSON.stringify(value)); }
+
+test('engine choices use DSH search providers and forward only the selected engine through the collector', async () => {
+  const calls = [];
+  const result = { sources: [], truncated: false };
+  const collector = {
+    available: () => true,
+    search: (request, signal) => { calls.push({ request, signal }); return Promise.resolve(result); },
+  };
+  const controller = new AbortController();
+  for (const engine of ['searxng', 'rustxng']) {
+    const provider = createEngineSearchProvider(collector, engine);
+    assert.equal(provider.id, `dsh-${engine}`);
+    assert.equal(provider.available(), true);
+    assert.strictEqual(await provider.search({ query: 'current weather', maxResults: 4 }, controller.signal), result);
+    assert.deepEqual(calls.at(-1).request, { query: `${engine}: current weather`, maxResults: 4 });
+    assert.equal(calls.at(-1).signal, controller.signal);
+  }
+  assert.throws(() => createEngineSearchProvider(collector, 'other'), /Unsupported local search engine/);
+});
 
 test('explicit URL/query alone cross the collector boundary, without private context or auth', async t => {
   const { provider, seen } = await fixture(t, response => reply(response, fetchResult));

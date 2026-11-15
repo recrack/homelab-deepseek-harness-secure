@@ -80,12 +80,39 @@ export function createPublicProvider({ url, timeoutMs = 360000, maxResponseBytes
   };
 }
 
+/** Register a provider that selects one engine through the existing approved collector. */
+export function createEngineSearchProvider(provider, engine) {
+  if (engine !== 'searxng' && engine !== 'rustxng') throw new Error('Unsupported local search engine');
+  const id = `dsh-${engine}`;
+  return {
+    id,
+    title: engine === 'searxng' ? 'SearXNG' : 'RustXNG',
+    available: () => provider.available(),
+    search: (request, signal) => provider.search({
+      ...request,
+      query: `${engine}: ${request.query}`,
+    }, signal),
+  };
+}
+
 /** Own both registrations through Cordis disposal. */
 export default class PublicWebProvider {
   static inject = ['web'];
   constructor(ctx) {
     const provider = createPublicProvider({ url: process.env.DSH_COLLECTOR_URL, timeoutMs: Number(process.env.DSH_COLLECTOR_PROXY_TIMEOUT_MS ?? 360000), maxResponseBytes: Number(process.env.DSH_COLLECTOR_PROXY_MAX_BYTES ?? 8000000) });
-    ctx.effect(() => ctx.web.registerFetchProvider(provider));
-    ctx.effect(() => ctx.web.registerSearchProvider(provider));
+    ctx.effect(() => ctx.web.registerFetchProvider({
+      id: provider.id,
+      title: 'Approved public fetch',
+      available: provider.available,
+      fetch: provider.fetch,
+    }));
+    ctx.effect(() => ctx.web.registerSearchProvider({
+      id: provider.id,
+      title: 'SearXNG + RustXNG',
+      available: provider.available,
+      search: provider.search,
+    }));
+    ctx.effect(() => ctx.web.registerSearchProvider(createEngineSearchProvider(provider, 'searxng')));
+    ctx.effect(() => ctx.web.registerSearchProvider(createEngineSearchProvider(provider, 'rustxng')));
   }
 }
