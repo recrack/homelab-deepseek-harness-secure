@@ -32,6 +32,10 @@ function isMaintained(file: string): boolean {
   return !excludedPrefixes.some(prefix => file.startsWith(prefix))
 }
 
+function isArchifyArtifact(file: string): boolean {
+  return file.startsWith('.archify/') && (file.endsWith('.json') || file.endsWith('.html'))
+}
+
 /**
  * Inspect a maintained source file against known commit identifiers.
  * @param file - Repository-relative path used in diagnostics and exclusions.
@@ -39,6 +43,7 @@ function isMaintained(file: string): boolean {
  * @param commits - Lowercase, unambiguous full or abbreviated commit identifiers.
  * @returns One finding per line and reference kind; digests and other Git object types are accepted.
  * Decimal-only tokens are ignored, including actual commit identifiers.
+ * Generated Archify JSON/HTML files retain source revision metadata; organization URLs in them remain checked.
  */
 export function findRepositoryReferences(
   file: string,
@@ -51,7 +56,7 @@ export function findRepositoryReferences(
     if (organizationUrl.test(canonicalReferenceText(line).replace(kitRepositoryUrl, ''))) {
       references.push({ file, line: index + 1, kind: 'organization-url' })
     }
-    if ([...line.matchAll(commitCandidate)].some(match => commits.has(match[0].toLowerCase()))) {
+    if (!isArchifyArtifact(file) && [...line.matchAll(commitCandidate)].some(match => commits.has(match[0].toLowerCase()))) {
       references.push({ file, line: index + 1, kind: 'commit-hash' })
     }
   }
@@ -136,11 +141,12 @@ export function repositoryCommits(repoRoot: string, sources: Iterable<string>): 
 /**
  * Scan tracked and nonignored new files using only the local Git object database.
  * @param repoRoot - Working tree whose files and Git objects are inspected.
- * @returns Prohibited references outside vendor and frozen Agent Notes; absent shallow-history objects cannot match.
+ * @returns Prohibited references outside vendor and frozen Agent Notes. Archify JSON/HTML commit pins are exempt.
+ * References cannot match when shallow-history objects are absent.
  */
 export function scanRepositoryReferences(repoRoot: string): RepositoryReference[] {
   const sources = readMaintainedFiles(repoRoot)
-  const commits = repositoryCommits(repoRoot, sources.values())
+  const commits = repositoryCommits(repoRoot, [...sources].filter(([file]) => !isArchifyArtifact(file)).map(([, source]) => source))
   return [...sources].flatMap(([file, source]) => findRepositoryReferences(file, source, commits))
 }
 
