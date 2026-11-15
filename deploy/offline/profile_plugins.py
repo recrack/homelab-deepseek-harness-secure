@@ -6,32 +6,64 @@ import tempfile
 
 
 BASE_BUNDLES = ("@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app")
+OPEN_ARTIFACTS_PLUGIN_IDS = (
+    "dsh-claude-artifacts",
+    "dsh-claude-slides",
+    "dsh-claude-design",
+    "dsh-claude-design-system",
+    "dsh-claude-data",
+    "dsh-claude-motion",
+    "dsh-claude-whiteboard",
+)
+OPEN_ARTIFACTS_PACKAGES = frozenset(OPEN_ARTIFACTS_PLUGIN_IDS)
 PLUGIN_PACKAGES = {
     "dsh-browser": "@zseven-w/dsh-browser",
     "dsh-context": "dsh-context",
     "dsh-claude-artifacts": "dsh-claude-artifacts",
+    "dsh-claude-slides": "dsh-claude-slides",
     "dsh-claude-design": "dsh-claude-design",
+    "dsh-claude-design-system": "dsh-claude-design-system",
+    "dsh-claude-data": "dsh-claude-data",
+    "dsh-claude-motion": "dsh-claude-motion",
+    "dsh-claude-whiteboard": "dsh-claude-whiteboard",
     "dsh-crew": "@zseven-w/dsh-crew",
 }
 PLUGIN_BUNDLE_NAMES = {
     "dsh-context": "dsh-context",
     "dsh-claude-artifacts": "dsh-claude-artifacts",
+    "dsh-claude-slides": "dsh-claude-slides",
     "dsh-claude-design": "dsh-claude-design",
+    "dsh-claude-design-system": "dsh-claude-design-system",
+    "dsh-claude-data": "dsh-claude-data",
+    "dsh-claude-motion": "dsh-claude-motion",
+    "dsh-claude-whiteboard": "dsh-claude-whiteboard",
     "dsh-crew": "@zseven-w/dsh-crew",
 }
-PLUGIN_RUNTIME_DEPENDENCIES = {"dsh-claude-design": ("dsh-claude-artifacts",)}
+PLUGIN_RUNTIME_DEPENDENCIES = {
+    plugin_id: ("dsh-claude-artifacts",)
+    for plugin_id in OPEN_ARTIFACTS_PLUGIN_IDS
+    if plugin_id != "dsh-claude-artifacts"
+}
 PLUGIN_DEPENDENCIES = {
-    package: f"file:/opt/homelab-dsh-plugins/packages/{package.rsplit('/', 1)[-1]}"
+    package: (
+        f"file:/opt/homelab-dsh-plugins/packages/open-artifacts/generated/{package}"
+        if package in OPEN_ARTIFACTS_PACKAGES
+        else f"file:/opt/homelab-dsh-plugins/packages/{package.rsplit('/', 1)[-1]}"
+    )
     for package in PLUGIN_PACKAGES.values()
 }
 LEGACY_PLUGIN_DEPENDENCIES = {
     "dsh-context": "file:/opt/dsh/deploy/offline/plugins/dsh-context",
-    "dsh-claude-artifacts": "file:/opt/dsh/deploy/offline/plugins/dsh-claude-artifacts",
-    "dsh-claude-design": "file:/opt/dsh/deploy/offline/plugins/dsh-claude-design",
+    "dsh-claude-artifacts": "file:/opt/homelab-dsh-plugins/packages/dsh-claude-artifacts",
+    "dsh-claude-design": "file:/opt/homelab-dsh-plugins/packages/dsh-claude-design",
     "@zseven-w/dsh-crew": "file:/opt/dsh-deps/dsh-crew",
 }
 PLUGIN_ROOTS = {
-    package: Path("/opt/homelab-dsh-plugins/packages") / package.rsplit("/", 1)[-1]
+    package: (
+        Path("/opt/homelab-dsh-plugins/packages/open-artifacts/generated") / package
+        if package in OPEN_ARTIFACTS_PACKAGES
+        else Path("/opt/homelab-dsh-plugins/packages") / package.rsplit("/", 1)[-1]
+    )
     for package in PLUGIN_PACKAGES.values()
 }
 PROFILE_PATCH = """# Your patch layer for this dsh profile, applied after every bundle layer:

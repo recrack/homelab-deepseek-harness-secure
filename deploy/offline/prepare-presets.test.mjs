@@ -54,6 +54,20 @@ test('rejects plugin ids outside the offline catalog', async () => {
   await assert.rejects(presetPatches(['unknown']), /Invalid active offline plugin ids/);
 });
 
+test('accepts each Open Artifacts feature ID without adding a custom preset row', async () => {
+  const ids = [
+    'dsh-claude-slides',
+    'dsh-claude-design',
+    'dsh-claude-design-system',
+    'dsh-claude-data',
+    'dsh-claude-motion',
+    'dsh-claude-whiteboard',
+  ];
+  const patches = await presetPatches(ids);
+  assert.deepEqual(patches.map(patch => patch.id), ['preset-standard', 'preset-ptc', 'preset-cordis']);
+  for (const patch of patches) assert.equal(patch.config.plugins.some(row => ids.includes(row.id)), false);
+});
+
 test('Hermes preset only enables browser tools when the persisted selection includes them', async () => {
   const requireInclude = createRequire(new URL('../../vendor/include/package.json', import.meta.url));
   const { parseEntryYaml } = requireInclude('./lib/index.js');

@@ -1,0 +1,22 @@
+ARG DSH_BASE_IMAGE
+FROM ${DSH_BASE_IMAGE}
+
+ARG HOMELAB_DSH_PLUGINS_COMMIT
+RUN test -n "$HOMELAB_DSH_PLUGINS_COMMIT" \
+    && git -C /opt/homelab-dsh-plugins fetch --depth=1 origin "$HOMELAB_DSH_PLUGINS_COMMIT" \
+    && git -C /opt/homelab-dsh-plugins checkout --detach FETCH_HEAD \
+    && node /opt/homelab-dsh-plugins/scripts/install-open-artifacts.mjs \
+    && chmod -R a+rX /opt/homelab-dsh-plugins
+
+COPY deploy/offline/profile_plugins.py /opt/dsh/deploy/offline/profile_plugins.py
+
+RUN for package in \
+      dsh-claude-artifacts \
+      dsh-claude-slides \
+      dsh-claude-design \
+      dsh-claude-design-system \
+      dsh-claude-data \
+      dsh-claude-motion \
+      dsh-claude-whiteboard; do \
+        ln -sfn "/opt/homelab-dsh-plugins/packages/open-artifacts/generated/$package" "/opt/dsh/node_modules/$package"; \
+    done

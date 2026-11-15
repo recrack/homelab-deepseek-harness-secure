@@ -20,7 +20,18 @@ from model_gateway import make_server, make_unix_server, upstream_address
 from search_services import SearchServices
 
 
-PLUGIN_IDS = frozenset(("dsh-browser", "dsh-context", "dsh-claude-artifacts", "dsh-claude-design", "dsh-crew"))
+PLUGIN_IDS = frozenset((
+    "dsh-browser",
+    "dsh-context",
+    "dsh-claude-artifacts",
+    "dsh-claude-slides",
+    "dsh-claude-design",
+    "dsh-claude-design-system",
+    "dsh-claude-data",
+    "dsh-claude-motion",
+    "dsh-claude-whiteboard",
+    "dsh-crew",
+))
 
 
 def docker(*args, capture=False):

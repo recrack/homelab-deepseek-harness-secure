@@ -5,7 +5,18 @@ import { fileURLToPath } from 'node:url';
 
 const requireInclude = createRequire(new URL('../../vendor/include/package.json', import.meta.url));
 const { parseEntryYaml, stringifyEntryYaml } = requireInclude('./lib/index.js');
-const pluginIds = new Set(['dsh-browser', 'dsh-context', 'dsh-claude-artifacts', 'dsh-claude-design', 'dsh-crew']);
+const pluginIds = new Set([
+  'dsh-browser',
+  'dsh-context',
+  'dsh-claude-artifacts',
+  'dsh-claude-slides',
+  'dsh-claude-design',
+  'dsh-claude-design-system',
+  'dsh-claude-data',
+  'dsh-claude-motion',
+  'dsh-claude-whiteboard',
+  'dsh-crew',
+]);
 
 /** Read current shipped presets, retaining deferred Loader expressions and every other row. */
 export async function presetPatches(activePluginIds = []) {

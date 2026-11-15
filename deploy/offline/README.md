@@ -32,7 +32,7 @@ Optional plugin packages are built into the image from a pinned [homelab-dsh-plu
 python3 deploy/offline/run.py --workspace /absolute/project --state /absolute/private-dsh-state --model MODEL_ID --base-url http://127.0.0.1:18080/v1 --plugin dsh-context --plugin dsh-claude-artifacts --plugin dsh-claude-design --plugin dsh-crew
 ```
 
-Available IDs are `dsh-browser`, `dsh-context`, `dsh-claude-artifacts`, `dsh-claude-design`, and `dsh-crew`. No optional plugin is activated for a new state directory unless selected. Existing profile selections stay installed. DSH Crew requires the Web profile and running local DSH hub; its worker providers use the selected local model, while vision and image generation remain disabled.
+Available IDs are `dsh-browser`, `dsh-context`, `dsh-claude-artifacts`, `dsh-claude-slides`, `dsh-claude-design`, `dsh-claude-design-system`, `dsh-claude-data`, `dsh-claude-motion`, `dsh-claude-whiteboard`, and `dsh-crew`. Open Artifacts features share the `dsh-claude-artifacts` runtime package. No optional plugin is activated for a new state directory unless selected. Existing profile selections stay installed. DSH Crew requires the Web profile and running local DSH hub; its worker providers use the selected local model, while vision and image generation remain disabled.
 
 Browser-enabled presets isolate the plugin's `zsevenBrowserDriver` service within each preset so the preset registry can validate and mount it for new sessions.
 
@@ -60,7 +60,9 @@ The plugin repository's [`plugins.json`](https://github.com/recrack/homelab-dsh-
 
 The host launcher mounts its current `cordis.patch.yml`, `prepare-presets.mjs`, and `hermes.patch.yml` into the container read-only. Model provider settings and preset safety fixes take effect on the next member restart without rebuilding the DSH image; plugin package or compiled DSH changes still require an image rebuild.
 
-The `dsh-context` snapshot keeps its context panels and blocks its automatic catalog, balance, and recommendation requests. The Baoyu plugins provide the local Artifacts page and design canvas. DSH Crew requires the running DSH hub and uses the selected local model for both worker tiers; it cannot fall back to a standalone DeepSeek runtime. The multimodal vision and image-generation providers are disabled.
+For an existing compatible DSH image, [Dockerfile.plugins](Dockerfile.plugins) stages a new pinned plugin snapshot and profile installer without rebuilding DSH. Pass the local base image tag and the exact plugin repository commit with `DSH_BASE_IMAGE` and `HOMELAB_DSH_PLUGINS_COMMIT`; the resulting image retains the base image's firewall and runtime entrypoint. The current plugin snapshot is `019403752f87dc75a9dd426cb1ed7f2646de08d4`.
+
+The `dsh-context` snapshot keeps its context panels and blocks its automatic catalog, balance, and recommendation requests. Open Artifacts provides slides, design, design system, data, motion, and whiteboard skills with the shared Artifacts page. DSH Crew requires the running DSH hub and uses the selected local model for both worker tiers; it cannot fall back to a standalone DeepSeek runtime. The multimodal vision and image-generation providers are disabled.
 
 When `--hermes-acp-volume` is supplied, DSH Crew routes both worker tiers through the Hermes + Qwen agent preset. Without that volume, workers use the local DSH model. The launcher keeps the existing profile patch and other bundle selections when it adds these bundles.
 

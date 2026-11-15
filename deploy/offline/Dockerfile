@@ -12,7 +12,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && npm install --global pnpm@11.28.5
 
-ARG HOMELAB_DSH_PLUGINS_COMMIT=165a07e1f0359d0159a9baa25d774b533ec00fce
+ARG HOMELAB_DSH_PLUGINS_COMMIT=019403752f87dc75a9dd426cb1ed7f2646de08d4
 RUN mkdir -p /opt/homelab-dsh-plugins \
     && git -C /opt/homelab-dsh-plugins init \
     && git -C /opt/homelab-dsh-plugins remote add origin https://github.com/recrack/homelab-dsh-plugins.git \
@@ -31,8 +31,13 @@ RUN pnpm install --frozen-lockfile --ignore-scripts \
     && mkdir -p node_modules/@zseven-w \
     && ln -s /opt/homelab-dsh-plugins/packages/dsh-browser node_modules/@zseven-w/dsh-browser \
     && ln -s /opt/homelab-dsh-plugins/packages/dsh-context node_modules/dsh-context \
-    && ln -s /opt/homelab-dsh-plugins/packages/dsh-claude-artifacts node_modules/dsh-claude-artifacts \
-    && ln -s /opt/homelab-dsh-plugins/packages/dsh-claude-design node_modules/dsh-claude-design \
+    && ln -s /opt/homelab-dsh-plugins/packages/open-artifacts/generated/dsh-claude-artifacts node_modules/dsh-claude-artifacts \
+    && ln -s /opt/homelab-dsh-plugins/packages/open-artifacts/generated/dsh-claude-slides node_modules/dsh-claude-slides \
+    && ln -s /opt/homelab-dsh-plugins/packages/open-artifacts/generated/dsh-claude-design node_modules/dsh-claude-design \
+    && ln -s /opt/homelab-dsh-plugins/packages/open-artifacts/generated/dsh-claude-design-system node_modules/dsh-claude-design-system \
+    && ln -s /opt/homelab-dsh-plugins/packages/open-artifacts/generated/dsh-claude-data node_modules/dsh-claude-data \
+    && ln -s /opt/homelab-dsh-plugins/packages/open-artifacts/generated/dsh-claude-motion node_modules/dsh-claude-motion \
+    && ln -s /opt/homelab-dsh-plugins/packages/open-artifacts/generated/dsh-claude-whiteboard node_modules/dsh-claude-whiteboard \
     && ln -s /opt/homelab-dsh-plugins/packages/dsh-crew node_modules/@zseven-w/dsh-crew \
     && DSH_GATE_CONCURRENCY=2 pnpm run build:artifacts \
     && DSH_GATE_CONCURRENCY=2 pnpm run build:check \

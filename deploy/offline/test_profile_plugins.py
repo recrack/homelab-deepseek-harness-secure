@@ -43,7 +43,19 @@ class ProfilePluginsTests(unittest.TestCase):
         self.assertEqual(active, selected)
         self.assertEqual(
             profile["dsh"]["profile"]["bundles"],
-            ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-context", "dsh-claude-artifacts", "dsh-claude-design", "@zseven-w/dsh-crew"],
+            [
+                "@deepseek-ai/dsh-base",
+                "@deepseek-ai/dsh-web-app",
+                "dsh-context",
+                "dsh-claude-artifacts",
+                "dsh-claude-slides",
+                "dsh-claude-design",
+                "dsh-claude-design-system",
+                "dsh-claude-data",
+                "dsh-claude-motion",
+                "dsh-claude-whiteboard",
+                "@zseven-w/dsh-crew",
+            ],
         )
         self.assertEqual(profile["dependencies"], PLUGIN_DEPENDENCIES)
         for package, target in self.plugin_roots.items():
@@ -115,6 +127,31 @@ class ProfilePluginsTests(unittest.TestCase):
         self.assertEqual(profile["dependencies"]["dsh-claude-artifacts"], PLUGIN_DEPENDENCIES["dsh-claude-artifacts"])
         self.assertTrue((self.dsh_home / "profiles/web/node_modules/dsh-claude-artifacts").is_symlink())
 
+    def test_open_artifacts_features_install_the_shared_package_without_its_standalone_bundle(self):
+        features = (
+            "dsh-claude-slides",
+            "dsh-claude-design",
+            "dsh-claude-design-system",
+            "dsh-claude-data",
+            "dsh-claude-motion",
+            "dsh-claude-whiteboard",
+        )
+        for plugin_id in features:
+            with self.subTest(plugin_id=plugin_id):
+                dsh_home = self.root / plugin_id / ".dsh"
+                home = self.root / plugin_id / "home"
+                active = install_profile(dsh_home, home, "qwen-local", False, (plugin_id,), self.plugin_roots)
+                profile = json.loads((dsh_home / "profiles/web/package.json").read_text())
+                bundles = profile["dsh"]["profile"]["bundles"]
+                self.assertEqual(active, [plugin_id])
+                self.assertIn(plugin_id, bundles)
+                self.assertNotIn("dsh-claude-artifacts", bundles)
+                self.assertEqual(
+                    profile["dependencies"]["dsh-claude-artifacts"],
+                    PLUGIN_DEPENDENCIES["dsh-claude-artifacts"],
+                )
+                self.assertTrue((dsh_home / "profiles/web/node_modules/dsh-claude-artifacts").is_symlink())
+
     def test_refuses_hermes_without_an_active_crew_plugin(self):
         with self.assertRaisesRegex(ValueError, "Hermes ACP requires the dsh-crew plugin"):
             install_profile(self.dsh_home, self.home, "qwen-local", True, plugin_roots=self.plugin_roots)
@@ -131,6 +168,7 @@ class ProfilePluginsTests(unittest.TestCase):
 
     def test_validates_the_host_plugin_selection(self):
         self.assertEqual(selected_plugin_ids('["dsh-browser"]'), ["dsh-browser"])
+        self.assertEqual(selected_plugin_ids('["dsh-claude-slides"]'), ["dsh-claude-slides"])
         for invalid in ("{}", '["unknown"]', '["dsh-browser","dsh-browser"]', "[1]"):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 selected_plugin_ids(invalid)
