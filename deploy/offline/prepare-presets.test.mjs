@@ -25,11 +25,26 @@ test('browser tools are only mounted for a selected plugin', async () => {
   const browser = local.find(row => row.id === 'dsh-browser');
   assert.equal(browser.name, '/opt/homelab-dsh-plugins/packages/dsh-browser/lib/index.js');
   assert.deepEqual(browser.isolate, { zsevenBrowserDriver: true });
+  assert.equal(browser.config.engine, 'chromium');
   assert.deepEqual(browser.config.allowedOrigins, []);
   for (const row of local.filter(row => !['tool-web', 'dsh-browser'].includes(row.id))) {
     const original = shipped.find(candidate => candidate.id === row.id);
     assert.ok(original, row.id);
     assert.deepEqual(row.config, original.config, row.id);
+  }
+});
+
+test('Camoufox selection is passed into each generated preset without changing the default', async () => {
+  const previous = process.env.DSH_BROWSER_ENGINE;
+  process.env.DSH_BROWSER_ENGINE = 'camoufox';
+  try {
+    const patches = await presetPatches(['dsh-browser']);
+    for (const patch of patches) {
+      assert.equal(patch.config.plugins.find(row => row.id === 'dsh-browser').config.engine, 'camoufox', patch.id);
+    }
+  } finally {
+    if (previous === undefined) delete process.env.DSH_BROWSER_ENGINE;
+    else process.env.DSH_BROWSER_ENGINE = previous;
   }
 });
 
@@ -76,5 +91,6 @@ test('Hermes preset only enables browser tools when the persisted selection incl
   const browser = preset.config.plugins.find(row => row.id === 'dsh-browser');
   assert.equal(browser.name, '/opt/homelab-dsh-plugins/packages/dsh-browser/lib/index.js');
   assert.deepEqual(browser.isolate, { zsevenBrowserDriver: true });
+  assert.equal(browser.config.engine.__jsExpr, "process.env.DSH_BROWSER_ENGINE || 'chromium'");
   assert.equal(browser.disabled.__jsExpr, "JSON.parse(process.env.DSH_OFFLINE_ACTIVE_PLUGINS || '[]').includes('dsh-browser') === false");
 });

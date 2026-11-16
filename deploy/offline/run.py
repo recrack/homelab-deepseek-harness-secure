@@ -89,6 +89,7 @@ def main():
     parser.add_argument("--approval-file", type=Path)
     parser.add_argument("--plugin", action="append", default=[], metavar="ID", help="install and activate an optional Web plugin; repeat to select more")
     parser.add_argument("--hermes-acp-volume")
+    parser.add_argument("--browser-engine", choices=("chromium", "camoufox"), default="chromium", help="browser engine for dsh-browser; Camoufox requires the optional image")
     parser.add_argument("--browser-origin", action="append", default=[], metavar="LOCAL_ORIGIN")
     parser.add_argument("--search", choices=("auto", "off"), default="auto")
     parser.add_argument("--image", default="dsh-offline:local")
@@ -111,6 +112,8 @@ def main():
         parser.error("Optional plugins are available only with --profile web")
     if args.browser_origin and "dsh-browser" not in args.plugin:
         parser.error("--browser-origin requires --plugin dsh-browser")
+    if args.browser_engine != "chromium" and "dsh-browser" not in args.plugin:
+        parser.error("--browser-engine camoufox requires --plugin dsh-browser")
     try:
         browser_origins = [browser_origin(origin) for origin in args.browser_origin]
     except ValueError as error:
@@ -247,6 +250,7 @@ def main():
             "DSH_CONTEXT_WINDOW": str(args.context_window),
             "DSH_MAX_TOKENS": str(args.max_tokens),
             "DSH_BROWSER_ALLOWED_ORIGINS": json.dumps([origin for origin, _, _ in browser_origins]),
+            "DSH_BROWSER_ENGINE": args.browser_engine,
             "DSH_OFFLINE_SELECTED_PLUGINS": json.dumps(args.plugin),
         }
         if args.model_gateway_mode == "unix":

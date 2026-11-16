@@ -123,6 +123,14 @@ class GatewayTests(unittest.TestCase):
 
 
 class LauncherTests(unittest.TestCase):
+    def test_camoufox_engine_requires_the_browser_plugin(self):
+        argv = ["run.py", "--workspace", "/tmp/project", "--state", "/tmp/state",
+                "--model", "local", "--base-url", "http://127.0.0.1:18080/v1",
+                "--browser-engine", "camoufox"]
+        with patch("sys.argv", argv), patch.object(launcher.os, "getuid", return_value=1000), self.assertRaises(SystemExit) as error:
+            launcher.main()
+        self.assertEqual(error.exception.code, 2)
+
     def test_browser_origins_are_exact_private_http_origins(self):
         self.assertEqual(launcher.browser_origin("http://127.0.0.1:4173"), ("http://127.0.0.1:4173", "127.0.0.1", 4173))
         self.assertEqual(launcher.browser_origin("https://192.168.5.20"), ("https://192.168.5.20", "192.168.5.20", 443))

@@ -33,9 +33,24 @@ if [ "$DSH_HERMES_ACP_ENABLED" = 1 ] && [ "$profile" != web ]; then
 fi
 DSH_WEB_PORT=${DSH_WEB_PORT:-3080}
 DSH_BROWSER_ALLOWED_ORIGINS=${DSH_BROWSER_ALLOWED_ORIGINS:-[]}
+DSH_BROWSER_ENGINE=${DSH_BROWSER_ENGINE:-chromium}
 DSH_OFFLINE_SELECTED_PLUGINS=${DSH_OFFLINE_SELECTED_PLUGINS:-[]}
+case "$DSH_BROWSER_ENGINE" in
+    chromium) ;;
+    camoufox)
+        [ "$profile" = web ] || fail 'Camoufox requires the Web profile'
+        [ -f /opt/camoufox/browser-executable ] || fail 'Camoufox is not installed in this image; build deploy/offline/Dockerfile.camoufox and select its image'
+        CAMOUFOX_EXECUTABLE_PATH=$(cat /opt/camoufox/browser-executable)
+        case "$CAMOUFOX_EXECUTABLE_PATH" in /opt/camoufox/cache/camoufox/browsers/*) ;; *) fail 'Camoufox executable manifest points outside its image directory';; esac
+        [ -x "$CAMOUFOX_EXECUTABLE_PATH" ] || fail 'Camoufox executable from the image manifest is unavailable'
+        [ -f /opt/camoufox/fpgen/.pinned-model ] || fail 'Camoufox fingerprint model is missing from this image'
+        CAMOUFOX_FPGEN_DATA=/opt/camoufox/fpgen
+        export CAMOUFOX_EXECUTABLE_PATH CAMOUFOX_FPGEN_DATA
+        ;;
+    *) fail 'DSH_BROWSER_ENGINE must be chromium or camoufox';;
+esac
 export MODEL_GATEWAY_MODE DSH_MODEL_PROXY_PORT DSH_MODEL_GATEWAY_SOCKET DSH_NETWORK_GATEWAY_HOST
-export DSH_HERMES_ACP_ENABLED DSH_WEB_PORT DSH_BROWSER_ALLOWED_ORIGINS DSH_OFFLINE_SELECTED_PLUGINS
+export DSH_HERMES_ACP_ENABLED DSH_WEB_PORT DSH_BROWSER_ALLOWED_ORIGINS DSH_BROWSER_ENGINE DSH_OFFLINE_SELECTED_PLUGINS
 if [ "$DSH_HERMES_ACP_ENABLED" = 1 ] && [ ! -S /run/hermes-acp/agent.sock ]; then
     fail 'the mounted Hermes ACP socket is unavailable'
 fi
