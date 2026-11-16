@@ -9,3 +9,5 @@ RUN mkdir -p /opt/camoufox/cache /opt/camoufox/fpgen \
     && rm -rf /opt/camoufox/cache/camoufox/geoip \
     && node /opt/homelab-dsh-plugins/packages/dsh-browser/scripts/prefetch-camoufox.mjs /opt/camoufox/browser-executable \
     && chmod -R a+rX /opt/camoufox
+
+ENV XDG_CACHE_HOME=/state/home/.cache
