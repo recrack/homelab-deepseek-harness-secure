@@ -58,7 +58,7 @@ Selected plugin code runs inside the DSH container and follows the container net
 
 The plugin repository's [`plugins.json`](https://github.com/recrack/homelab-dsh-plugins/blob/master/plugins.json) records upstream revisions and activation types; its [snapshot-to-runtime architecture](https://github.com/recrack/homelab-dsh-plugins/blob/master/README.md#how-the-secure-deployment-uses-these-packages) shows how those packages reach this deployment. The catalog does not populate the secure launcher's allowlist. To add a plugin, add its reviewed snapshot and build requirements to `homelab-dsh-plugins`, then update this repository's [image package links](Dockerfile), [launcher ID list](run.py), and [persistent profile package and bundle mappings](profile_plugins.py). Register every new ID in [prepare-presets.mjs](prepare-presets.mjs); add its preset row there when the plugin uses Web preset activation. Rebuild the image to include the package, then select it with `--plugin <id>`; the Plugin Manager UI and tool are not install paths in this deployment.
 
-The host launcher mounts its current `cordis.patch.yml`, `prepare-presets.mjs`, and `hermes.patch.yml` into the container read-only. Model provider settings and preset safety fixes take effect on the next member restart without rebuilding the DSH image; plugin package or compiled DSH changes still require an image rebuild.
+The host launcher mounts its current `cordis.patch.yml`, `prepare-presets.mjs`, and `hermes.patch.yml` into the container read-only. Changes to these mounted files take effect on the next member restart. `web-provider.mjs`, optional plugin packages, and compiled DSH code are copied into the image and require an image rebuild.
 
 For an existing compatible DSH image, [Dockerfile.plugins](Dockerfile.plugins) stages a new pinned plugin snapshot and profile installer without rebuilding DSH. Pass the local base image tag and the exact plugin repository commit with `DSH_BASE_IMAGE` and `HOMELAB_DSH_PLUGINS_COMMIT`; the resulting image retains the base image's firewall and runtime entrypoint. The current plugin snapshot is `019403752f87dc75a9dd426cb1ed7f2646de08d4`.
 
@@ -83,6 +83,8 @@ export DSH_SEARCH_NETWORK=search-local-only
 ```
 
 Manually configured engines must listen on private IPv4 addresses and expose the SearXNG-compatible `/search` JSON endpoint. A query beginning with `searxng:` or `rustxng:` selects one engine; other queries are sent to both and results are merged. The exact submitted query is shown for approval first. The collector sends only that query and result limit to the local engines, without cookies, credentials, conversation history, files, or logs.
+
+In DSH settings, select **SearXNG**, **RustXNG**, or **SearXNG + RustXNG** from the **Web search provider** menu. The combined provider remains the default. The entries use DSH's existing `ctx.web.registerSearchProvider()` API and settings page. Each choice queues the query in the same approval collector, and the selected engine receives it only after approval. The separate Web fetch provider remains **Approved public fetch**. Rebuild the DSH image and restart the runtime to deploy changes to these options.
 
 The collector can also fetch a public HTTP(S) URL after explicit approval. DeepSeek root and subdomains, including `api.deepseek.com`, are rejected before approval or DNS. The collector has no public-search fallback. The temporary search Docker network contains only the selected search services and is removed at exit.
 
