@@ -29,13 +29,22 @@ python3 deploy/offline/run.py --workspace /absolute/project --state /absolute/pr
 
 사용 가능한 ID는 `dsh-browser`, `dsh-context`, `dsh-claude-artifacts`, `dsh-claude-design`, `dsh-crew`입니다. `dsh-context`의 고정본은 자동 카탈로그, 잔액, 추천 요청을 차단합니다. Baoyu 플러그인은 로컬 Artifacts 페이지와 디자인 캔버스를 제공합니다. DSH Crew는 실행 중인 DSH 허브를 사용하고 두 작업자 계층에 선택한 로컬 모델을 적용합니다. 비전과 이미지 생성 제공자는 꺼져 있습니다.
 
-`dsh-browser`는 기본적으로 탐색 대상이 없습니다. 로컬 페이지를 허용하려면 매 실행마다 `dsh-browser`를 고르고 정확한 루프백 또는 사설 IPv4 origin을 지정합니다. origin을 여러 개 허용할 때는 옵션을 반복합니다.
+`dsh-browser`는 기본적으로 탐색 대상이 없습니다. 로컬 페이지를 허용하려면 매 실행마다 `dsh-browser`를 고르고 정확한 루프백 또는 사설 IPv4 origin을 지정합니다. origin을 여러 개 허용할 때는 옵션을 반복합니다. 선택형 이미지에서 `--browser-engine camoufox`를 추가하면 Camoufox를 사용하며, 기본 엔진은 Chromium입니다.
 
 ```sh
 python3 deploy/offline/run.py --workspace /absolute/project --state /absolute/private-dsh-state --model MODEL_ID --base-url http://127.0.0.1:18080/v1 --plugin dsh-browser --browser-origin http://127.0.0.1:4173
 ```
 
 루프백 주소는 DSH 컨테이너를 가리킵니다. 브라우저 페이지가 하위 리소스를 요청할 수 있지만 방화벽은 지정한 주소와 포트만 허용합니다. 공개 웹사이트는 승인된 Web 수집기를 사용하세요.
+
+`dsh-browser`는 기본으로 Chromium을 사용합니다. Camoufox는 같은 플러그인에서 선택하는 Firefox 기반 엔진입니다. 로컬 기본 이미지에서 선택형 이미지를 빌드하면 고정한 Camoufox 패키지와 짝을 이루는 브라우저 빌드 및 검증된 지문 모델을 이미지 빌드 때 설치합니다.
+
+```sh
+docker build --build-arg DSH_BASE_IMAGE=dsh-offline:local -f deploy/offline/Dockerfile.camoufox -t dsh-offline:camoufox .
+python3 deploy/offline/run.py --image dsh-offline:camoufox --browser-engine camoufox --workspace /absolute/project --state /absolute/private-dsh-state --model MODEL_ID --base-url http://127.0.0.1:18080/v1 --plugin dsh-browser --browser-origin http://127.0.0.1:4173
+```
+
+기본 이미지에는 Camoufox 브라우저와 지문 모델이 들어가지 않습니다. 선택형 이미지의 세션은 이미지에 설치된 읽기 전용 파일만 사용하며, 파일이 없으면 런타임 다운로드 없이 시작에 실패합니다. 기존 컨테이너 방화벽은 모델 릴레이, collector, 지정한 사설 origin으로만 브라우저 연결을 허용합니다. origin 허용 목록을 켠 Camoufox는 최상위 HTTP redirect를 거부하므로 최종 URL을 직접 지정합니다. Camoufox는 Chromium DevTools Protocol을 제공하지 않아 닫힌 Shadow DOM 검사는 `cdp-unavailable`로 보고하며, 시각 캡처 배율은 `1`만 지원합니다.
 
 ### 이미지 빌드와 프로필 활성화
 

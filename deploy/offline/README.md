@@ -36,13 +36,22 @@ Available IDs are `dsh-browser`, `dsh-context`, `dsh-claude-artifacts`, `dsh-cla
 
 Browser-enabled presets isolate the plugin's `zsevenBrowserDriver` service within each preset so the preset registry can validate and mount it for new sessions.
 
-The `dsh-browser` plugin starts with an empty navigation allowlist. To allow one exact loopback or private IPv4 origin, select the plugin and repeat `--browser-origin` for each origin:
+The `dsh-browser` plugin starts with an empty navigation allowlist. To allow one exact loopback or private IPv4 origin, select the plugin and repeat `--browser-origin` for each origin. Use `--browser-engine camoufox` with the optional image to select Camoufox; Chromium remains the default:
 
 ```sh
 python3 deploy/offline/run.py --workspace /absolute/project --state /absolute/private-dsh-state --model MODEL_ID --base-url http://127.0.0.1:18080/v1 --plugin dsh-browser --browser-origin http://127.0.0.1:4173
 ```
 
 Loopback addresses refer to the DSH container. A browser page can still request its subresources, but the firewall permits only the configured addresses and ports. Use the approved Web collector for public websites.
+
+Chromium is the default `dsh-browser` engine. Camoufox is an optional Firefox-based engine inside the same plugin. Build the optional image from the local base image; it installs the browser build paired with the pinned Camoufox package and the verified fingerprint model during image construction:
+
+```sh
+docker build --build-arg DSH_BASE_IMAGE=dsh-offline:local -f deploy/offline/Dockerfile.camoufox -t dsh-offline:camoufox .
+python3 deploy/offline/run.py --image dsh-offline:camoufox --browser-engine camoufox --workspace /absolute/project --state /absolute/private-dsh-state --model MODEL_ID --base-url http://127.0.0.1:18080/v1 --plugin dsh-browser --browser-origin http://127.0.0.1:4173
+```
+
+The standard image does not include the Camoufox browser or fingerprint model. Runtime sessions use only the read-only browser and model installed in the optional image; missing files fail startup instead of downloading them. The existing container firewall still limits browser traffic to the model relay, collector, and exact private origins. With an origin allowlist active, Camoufox rejects top-level HTTP redirects; pass the final exact URL directly. Camoufox has no Chromium DevTools Protocol, so DSH Browser reports closed-shadow coverage as `cdp-unavailable` and supports visual capture at scale `1` only.
 
 ## Optional DSH plugins
 

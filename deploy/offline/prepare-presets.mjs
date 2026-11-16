@@ -43,6 +43,7 @@ export async function presetPatches(activePluginIds = []) {
         id: 'dsh-browser',
         name: '/opt/homelab-dsh-plugins/packages/dsh-browser/lib/index.js',
         config: {
+          engine: process.env.DSH_BROWSER_ENGINE || 'chromium',
           allowedOrigins: JSON.parse(process.env.DSH_BROWSER_ALLOWED_ORIGINS || '[]'),
           idleTimeoutMs: 900000,
         },
@@ -51,6 +52,7 @@ export async function presetPatches(activePluginIds = []) {
       browser[0].name = '/opt/homelab-dsh-plugins/packages/dsh-browser/lib/index.js';
       browser[0].config = {
         ...browser[0].config,
+        engine: process.env.DSH_BROWSER_ENGINE || 'chromium',
         allowedOrigins: JSON.parse(process.env.DSH_BROWSER_ALLOWED_ORIGINS || '[]'),
         idleTimeoutMs: browser[0].config?.idleTimeoutMs ?? 900000,
       };

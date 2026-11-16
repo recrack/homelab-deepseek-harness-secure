@@ -48,6 +48,8 @@ exec "$@"''')
             )
             script = root / "entrypoint.sh"
             socket_path = root / "agent.sock"
+            camoufox_root = root / "camoufox"
+            source = source.replace("/opt/camoufox", str(camoufox_root))
             script.write_text(source.replace("/state", temporary + "/state").replace("/run/hermes-acp/agent.sock", str(socket_path)))
             env = {
                 **os.environ,
@@ -99,8 +101,22 @@ exec "$@"''')
             self.assertNotIn("/opt/dsh/deploy/offline/web.patch.yml", args)
             self.assertEqual(args[-1], "test task")
             self.assertFalse((root / "plugin-install").exists())
+            unavailable = run({"DSH_BROWSER_ENGINE": "camoufox"}, "web")
+            self.assertNotEqual(unavailable.returncode, 0)
+            self.assertIn("Dockerfile.camoufox", unavailable.stderr)
             headless_rules = (root / "rules").read_text()
             self.assertNotIn("--dport 3080", headless_rules)
+            executable = camoufox_root / "cache/camoufox/browsers/official/test/Camoufox"
+            executable.parent.mkdir(parents=True)
+            executable.write_text("fixture")
+            executable.chmod(0o755)
+            manifest = camoufox_root / "browser-executable"
+            manifest.write_text(str(executable) + "\n")
+            model_stamp = camoufox_root / "fpgen/.pinned-model"
+            model_stamp.parent.mkdir(parents=True)
+            model_stamp.write_text("fixture\n")
+            available = run({"DSH_BROWSER_ENGINE": "camoufox"}, "web")
+            self.assertEqual(available.returncode, 0, available.stderr)
             model_socket = root / "model.sock"
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as gateway_socket:
                 gateway_socket.bind(str(model_socket))

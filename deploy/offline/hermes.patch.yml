@@ -70,6 +70,7 @@
               zsevenBrowserDriver: true
             disabled: !!js JSON.parse(process.env.DSH_OFFLINE_ACTIVE_PLUGINS || '[]').includes('dsh-browser') === false
             config:
+              engine: !!js process.env.DSH_BROWSER_ENGINE || 'chromium'
               allowedOrigins: !!js JSON.parse(process.env.DSH_BROWSER_ALLOWED_ORIGINS || '[]')
               idleTimeoutMs: 900000
           - id: hermes-preset-guard
