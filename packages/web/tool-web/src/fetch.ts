@@ -459,7 +459,7 @@ export function applyWebFetchTool(ctx: Context, timeoutMs: number, maxOutputChar
     name: 'web_fetch',
     description: 'Fetch the content of a specific HTTP(S) URL and return it decoded to text.',
     parameters: {
-      url: { type: 'string', required: true, description: 'The HTTP(S) URL to fetch.' },
+      url: { type: 'string', required: true, description: 'A specific HTTP(S) URL supplied by the user or returned by web_search; do not invent a URL.' },
     },
     output: {
       schema: {
