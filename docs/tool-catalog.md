@@ -2824,7 +2824,7 @@ Fetch the content of a specific HTTP(S) URL and return it decoded to text.
   "properties": {
     "url": {
       "type": "string",
-      "description": "The HTTP(S) URL to fetch."
+      "description": "A specific HTTP(S) URL supplied by the user or returned by web_search; do not invent a URL."
     }
   },
   "required": [

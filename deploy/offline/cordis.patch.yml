@@ -52,6 +52,8 @@
   disabled: true
 - id: tool-plugin-manager
   disabled: true
+- id: ui-account-notifications
+  disabled: true
 - id: session-log-deepseek
   disabled: true
 - id: plugin-package-inventory-deepseek
