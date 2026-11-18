@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from profile_plugins import PLUGIN_DEPENDENCIES, PLUGIN_PACKAGES, install_profile, selected_plugin_ids
+from profile_plugins import ALL_PLUGIN_PACKAGES, PLUGIN_DEPENDENCIES, PLUGIN_PACKAGES, install_profile, selected_plugin_ids
 
 
 class ProfilePluginsTests(unittest.TestCase):
@@ -17,7 +17,7 @@ class ProfilePluginsTests(unittest.TestCase):
         self.home = self.root / "home"
         self.plugin_roots = {
             package: self.root / "bundled" / package.rsplit("/", 1)[-1]
-            for package in PLUGIN_PACKAGES.values()
+            for package in ALL_PLUGIN_PACKAGES.values()
         }
         for path in self.plugin_roots.values():
             path.mkdir(parents=True)
@@ -30,9 +30,11 @@ class ProfilePluginsTests(unittest.TestCase):
 
         profile = json.loads((self.dsh_home / "profiles/web/package.json").read_text())
         self.assertEqual(active, [])
-        self.assertEqual(profile["dsh"]["profile"]["bundles"], ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"])
-        self.assertEqual(profile["dependencies"], {})
-        self.assertFalse((self.dsh_home / "profiles/web/node_modules").exists())
+        self.assertEqual(profile["dsh"]["profile"]["bundles"], ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-family-account"])
+        self.assertEqual(profile["dependencies"], {"dsh-family-account": PLUGIN_DEPENDENCIES["dsh-family-account"]})
+        family_account = self.dsh_home / "profiles/web/node_modules/dsh-family-account"
+        self.assertTrue(family_account.is_symlink())
+        self.assertEqual(family_account.resolve(), self.plugin_roots["dsh-family-account"].resolve())
         self.assertFalse((self.home / ".config/dsh-crew/config.json").exists())
 
     def test_selected_plugins_install_once_and_configure_crew_safely(self):
@@ -46,6 +48,7 @@ class ProfilePluginsTests(unittest.TestCase):
             [
                 "@deepseek-ai/dsh-base",
                 "@deepseek-ai/dsh-web-app",
+                "dsh-family-account",
                 "dsh-context",
                 "dsh-claude-artifacts",
                 "dsh-claude-slides",

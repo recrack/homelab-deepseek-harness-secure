@@ -5,7 +5,9 @@ from pathlib import Path
 import tempfile
 
 
-BASE_BUNDLES = ("@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app")
+BASE_BUNDLES = ("@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-family-account")
+BASE_PLUGIN_PACKAGES = {"dsh-family-account": "dsh-family-account"}
+BASE_PLUGIN_BUNDLE_NAMES = {"dsh-family-account": "dsh-family-account"}
 OPEN_ARTIFACTS_PLUGIN_IDS = (
     "dsh-claude-artifacts",
     "dsh-claude-slides",
@@ -28,6 +30,7 @@ PLUGIN_PACKAGES = {
     "dsh-claude-whiteboard": "dsh-claude-whiteboard",
     "dsh-crew": "@zseven-w/dsh-crew",
 }
+ALL_PLUGIN_PACKAGES = {**BASE_PLUGIN_PACKAGES, **PLUGIN_PACKAGES}
 PLUGIN_BUNDLE_NAMES = {
     "dsh-context": "dsh-context",
     "dsh-claude-artifacts": "dsh-claude-artifacts",
@@ -39,6 +42,7 @@ PLUGIN_BUNDLE_NAMES = {
     "dsh-claude-whiteboard": "dsh-claude-whiteboard",
     "dsh-crew": "@zseven-w/dsh-crew",
 }
+ALL_PLUGIN_BUNDLE_NAMES = {**BASE_PLUGIN_BUNDLE_NAMES, **PLUGIN_BUNDLE_NAMES}
 PLUGIN_RUNTIME_DEPENDENCIES = {
     plugin_id: ("dsh-claude-artifacts",)
     for plugin_id in OPEN_ARTIFACTS_PLUGIN_IDS
@@ -50,7 +54,7 @@ PLUGIN_DEPENDENCIES = {
         if package in OPEN_ARTIFACTS_PACKAGES
         else f"file:/opt/homelab-dsh-plugins/packages/{package.rsplit('/', 1)[-1]}"
     )
-    for package in PLUGIN_PACKAGES.values()
+    for package in ALL_PLUGIN_PACKAGES.values()
 }
 LEGACY_PLUGIN_DEPENDENCIES = {
     "dsh-context": "file:/opt/dsh/deploy/offline/plugins/dsh-context",
@@ -64,7 +68,7 @@ PLUGIN_ROOTS = {
         if package in OPEN_ARTIFACTS_PACKAGES
         else Path("/opt/homelab-dsh-plugins/packages") / package.rsplit("/", 1)[-1]
     )
-    for package in PLUGIN_PACKAGES.values()
+    for package in ALL_PLUGIN_PACKAGES.values()
 }
 PROFILE_PATCH = """# Your patch layer for this dsh profile, applied after every bundle layer:
 # a top-level YAML array of loader patch entries (id-targeted config
@@ -125,7 +129,7 @@ def selected_plugin_ids(value):
 def install_plugin_links(profile_dir, active_plugins, plugin_roots):
     """Expose active package roots at the persistent profile's dependency paths."""
     modules_dir = Path(profile_dir) / "node_modules"
-    package_ids = {package: plugin_id for plugin_id, package in PLUGIN_PACKAGES.items()}
+    package_ids = {package: plugin_id for plugin_id, package in ALL_PLUGIN_PACKAGES.items()}
     for name in active_plugins:
         plugin_id = package_ids[name]
         target = Path(plugin_roots[name])
@@ -178,16 +182,16 @@ def install_profile(dsh_home, home, model_id, hermes_enabled, selected_plugins=(
     bundles = profile.setdefault("bundles", [])
     if not isinstance(bundles, list) or any(not isinstance(name, str) for name in bundles):
         raise ValueError(f"dsh.profile.bundles must be a string array in {manifest_path}")
-    for name in BASE_BUNDLES:
+    for index, name in enumerate(BASE_BUNDLES):
         if name not in bundles:
-            bundles.insert(0 if name == BASE_BUNDLES[0] else 1, name)
+            bundles.insert(index, name)
 
     active = set(selected)
     active_package_names = set()
-    for plugin_id, package in PLUGIN_PACKAGES.items():
+    for plugin_id, package in ALL_PLUGIN_PACKAGES.items():
         spec = PLUGIN_DEPENDENCIES[package]
         legacy_spec = LEGACY_PLUGIN_DEPENDENCIES.get(package)
-        bundle_name = PLUGIN_BUNDLE_NAMES.get(plugin_id)
+        bundle_name = ALL_PLUGIN_BUNDLE_NAMES.get(plugin_id)
         was_bundled = bundle_name is not None and bundle_name in bundles
         existing_spec = dependencies.get(package)
         was_installed = existing_spec == spec or (legacy_spec is not None and existing_spec == legacy_spec)
@@ -199,9 +203,9 @@ def install_profile(dsh_home, home, model_id, hermes_enabled, selected_plugins=(
     if hermes_enabled and "dsh-crew" not in active:
         raise ValueError("Hermes ACP requires the dsh-crew plugin")
     for plugin_id in active:
-        active_package_names.add(PLUGIN_PACKAGES[plugin_id])
+        active_package_names.add(ALL_PLUGIN_PACKAGES[plugin_id])
         for dependency_id in PLUGIN_RUNTIME_DEPENDENCIES.get(plugin_id, ()):
-            active_package_names.add(PLUGIN_PACKAGES[dependency_id])
+            active_package_names.add(ALL_PLUGIN_PACKAGES[dependency_id])
     for package in active_package_names:
         dependencies[package] = PLUGIN_DEPENDENCIES[package]
     for name in active_package_names:

@@ -12,7 +12,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && npm install --global pnpm@11.28.5
 
-ARG HOMELAB_DSH_PLUGINS_COMMIT=41ac31396e7b209b8c0b58d0e7203097f30de767
+ARG HOMELAB_DSH_PLUGINS_COMMIT=683f5940b6074da8f4453fad6a5f7347fe5b761a
 RUN mkdir -p /opt/homelab-dsh-plugins \
     && git -C /opt/homelab-dsh-plugins init \
     && git -C /opt/homelab-dsh-plugins remote add origin https://github.com/recrack/homelab-dsh-plugins.git \
@@ -29,6 +29,7 @@ RUN pnpm install --frozen-lockfile --ignore-scripts \
     && pnpm exec tsx native/system/scripts/build.ts \
     && pnpm rebuild esbuild node-pty koffi \
     && mkdir -p node_modules/@zseven-w \
+    && ln -s /opt/homelab-dsh-plugins/packages/dsh-family-account node_modules/dsh-family-account \
     && ln -s /opt/homelab-dsh-plugins/packages/dsh-browser node_modules/@zseven-w/dsh-browser \
     && ln -s /opt/homelab-dsh-plugins/packages/dsh-context node_modules/dsh-context \
     && ln -s /opt/homelab-dsh-plugins/packages/open-artifacts/generated/dsh-claude-artifacts node_modules/dsh-claude-artifacts \
