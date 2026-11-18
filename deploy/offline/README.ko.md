@@ -79,9 +79,9 @@ DSH 컨테이너의 IPv4와 IPv6 입력·출력 기본 정책은 DROP입니다. 
 
 기본 Cordis 오버레이는 DeepSeek 모델 및 계정 provider, DeepSeek 검색 provider, 원격 세션 로그, OpenTelemetry 세션 텔레메트리, Plugin Manager, 제품 분석, 계정 UI를 끕니다. `api.deepseek.com`을 포함한 DeepSeek 도메인으로 직접 연결할 수 없습니다. 모델 릴레이는 요청 로그를 만들지 않습니다. 이 설정은 이 Docker 배포에 적용됩니다. 직접 지정한 모델 서버, 수동 검색 서비스, Hermes sidecar, 신뢰하는 `--model-patch`의 정책은 별도로 확인해야 합니다.
 
-수집기는 검색에 `{query,maxResults}`, 가져오기에 `{url}`만 받습니다. 요청 전체를 호스트 전용 승인 페이지에 표시하고 사용자가 승인할 때까지 보류하며 자동 승인은 없습니다. 검색 제공자는 승인된 검색어와 검색 서비스의 공개 IP를 볼 수 있습니다. 공개 페이지에는 승인한 URL을 수집기가 요청하므로 사이트는 수집기의 공개 IP를 봅니다. 대화 기록, 파일, 자격 증명, 세션 로그는 검색어나 페이지 요청에 포함되지 않습니다.
+수집기는 검색에 `{query,maxResults}`, 가져오기에 `{url}`만 받습니다. 기본 설정에서는 요청을 호스트 전용 승인 페이지에 표시하고 사용자가 승인할 때까지 보류합니다. `--auto-approve-search`를 지정하면 검색 요청만 자동 승인하며 공개 URL 가져오기는 계속 매번 승인받습니다. 검색 제공자는 검색어와 검색 서비스의 공개 IP를 볼 수 있습니다. 공개 페이지에는 승인한 URL을 수집기가 요청하므로 사이트는 수집기의 공개 IP를 봅니다. 대화 기록, 파일, 자격 증명, 세션 로그는 검색어나 페이지 요청에 포함되지 않습니다.
 
-검색은 기본적으로 자동 시작됩니다. 실행기는 검토한 이미지 digest와 DSH 오프라인 설정 라벨을 모두 가진 컨테이너만 재사용하며, 다른 기존 컨테이너는 연결하지 않습니다. 적합한 컨테이너가 없으면 고정 이미지를 사용하고, 이미지가 없을 때는 고정 upstream digest를 먼저 확인한 뒤 고정 커밋을 `~/.cache/dsh-offline/search-services`에 clone해 빌드합니다. 기존 서비스를 직접 관리한다면 두 엔진 URL과 네트워크 이름을 지정할 수 있습니다. `--search off`는 자동 실행을 끕니다.
+검색은 기본적으로 자동 시작됩니다. 실행기는 검토한 이미지 digest와 DSH 오프라인 설정 라벨을 모두 가진 컨테이너만 재사용하며, 다른 기존 컨테이너는 연결하지 않습니다. 적합한 컨테이너가 없으면 고정 이미지를 사용하고, 이미지가 없을 때는 고정 upstream digest를 먼저 확인한 뒤 고정 커밋을 `~/.cache/dsh-offline/search-services`에 clone해 빌드합니다. 기존 서비스를 직접 관리한다면 두 엔진 URL과 네트워크 이름을 지정할 수 있습니다. `--search off`는 자동 실행을 끄며, 이 옵션과 `--auto-approve-search`는 함께 사용할 수 없습니다.
 
 관리형 SearXNG는 Google, Bing, DuckDuckGo, Brave만 사용합니다. 관리형 RustXNG는 DeepSeek 검색 엔진과 리서치 API를 끄고 직접 가져오기 방식을 사용합니다. 로컬 엔진은 승인된 검색어만 받고 DeepSeek API로 대체 전송하지 않습니다. `searxng:` 또는 `rustxng:` 접두어는 엔진 하나를 고르며, 다른 검색은 두 엔진 결과를 합칩니다. 검색 실패나 가져오기 실패 시 다른 provider로 자동 전환하지 않습니다.
 
@@ -97,7 +97,7 @@ export DSH_RUSTXNG_URL=http://172.30.0.4:8080
 export DSH_SEARCH_NETWORK=search-local-only
 ```
 
-수동 엔진은 사설 IPv4 주소에서 동작하고 SearXNG 호환 `/search` JSON endpoint를 제공해야 합니다. `searxng:` 또는 `rustxng:`로 시작하는 요청은 해당 엔진만 사용하며, 나머지는 양쪽 결과를 합칩니다. 사용자가 승인한 정확한 검색어와 결과 수만 로컬 엔진으로 보냅니다.
+수동 엔진은 사설 IPv4 주소에서 동작하고 SearXNG 호환 `/search` JSON endpoint를 제공해야 합니다. `searxng:` 또는 `rustxng:`로 시작하는 요청은 해당 엔진만 사용하며, 나머지는 양쪽 결과를 합칩니다. 승인된 검색 요청은 정확한 검색어와 결과 수만 로컬 엔진으로 보냅니다. 자동 승인 모드에서는 검색어가 승인 화면을 거치지 않고 전달됩니다.
 
 ## Hermes ACP
 

@@ -25,25 +25,26 @@ function readResults(endpoint, query, maxResults, signal, timeoutMs, maxBytes) {
         if (size > maxBytes) response.destroy(failure('Local search response exceeded its limit'));
         else chunks.push(chunk);
       });
-      response.on('error', () => reject(failure('Local search response was interrupted')));
+      response.on('error', error => reject(error?.code === 'SEARCH_UNAVAILABLE' ? error : failure('Local search response was interrupted')));
       response.on('end', () => {
         try {
           const data = JSON.parse(Buffer.concat(chunks).toString('utf8'));
           if (!Array.isArray(data.results)) throw failure('Local search returned invalid JSON results');
           const sources = data.results.map(row => {
             if (!row || typeof row.url !== 'string' || typeof row.title !== 'string' || row.content !== undefined && typeof row.content !== 'string') throw failure('Local search returned invalid result fields');
-            const url = new URL(row.url);
+            let url;
+            try { url = new URL(row.url); }
+            catch { throw failure('Local search returned an invalid result URL'); }
             if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw failure('Local search returned an invalid result URL');
             return { url: url.href, title: row.title.slice(0, 1000), ...(row.content === undefined ? {} : { snippet: row.content.slice(0, 2000) }) };
           });
-          if (!sources.length) throw failure('Local search returned no results');
           resolve(sources);
-        } catch { reject(failure('Local search returned invalid or empty results')); }
+        } catch (error) { reject(error?.code === 'SEARCH_UNAVAILABLE' ? error : failure('Local search returned invalid JSON results')); }
       });
     });
     const timer = setTimeout(() => req.destroy(failure('Local search timed out')), timeoutMs);
     req.on('close', () => clearTimeout(timer));
-    req.on('error', () => reject(failure(signal?.aborted ? 'Local search cancelled' : 'Local search connection failed')));
+    req.on('error', error => reject(signal?.aborted ? failure('Local search cancelled') : error?.code === 'SEARCH_UNAVAILABLE' ? error : failure('Local search connection failed')));
     req.end();
   });
 }
@@ -57,13 +58,25 @@ export function createLocalSearch({ searxngUrl, rustxngUrl, timeoutMs = 30000, m
     const names = choice ? [choice[1].toLowerCase()] : Object.keys(endpoints);
     const text = choice ? query.slice(choice[0].length) : query;
     if (!text.trim()) throw Object.assign(new Error('Search text must not be empty'), { code: 'INVALID_QUERY', status: 400 });
-    const batches = await Promise.all(names.map(name => readResults(endpoints[name], text, maxResults, signal, timeoutMs, maxBytes)));
+    const batches = await Promise.all(names.map(async name => {
+      try { return { name, sources: await readResults(endpoints[name], text, maxResults, signal, timeoutMs, maxBytes) }; }
+      catch (error) { return { name, error }; }
+    }));
+    if (signal?.aborted) throw failure('Local search cancelled');
+    const available = batches.filter(batch => !batch.error);
+    if (!available.length) throw failure(`Local search engines failed: ${batches.map(batch => `${batch.name} (${batch.error.message})`).join('; ')}`);
+    const unavailable = batches.filter(batch => batch.error).map(batch => batch.name);
     const sources = [], seen = new Set();
     // Alternate ranks so one engine cannot occupy the entire result budget.
-    for (let rank = 0; rank < Math.max(...batches.map(rows => rows.length)); rank++) for (const rows of batches) {
-      const row = rows[rank];
+    for (let rank = 0; rank < Math.max(...available.map(batch => batch.sources.length)); rank++) for (const batch of available) {
+      const row = batch.sources[rank];
       if (row && !seen.has(row.url)) { seen.add(row.url); sources.push(row); }
     }
-    return { sources: sources.slice(0, maxResults), truncated: sources.length > maxResults, content: 'Search engines: ' + names.join(', ') };
+    const status = unavailable.length ? `. Unavailable: ${unavailable.join(', ')}` : '';
+    return {
+      sources: sources.slice(0, maxResults),
+      truncated: sources.length > maxResults,
+      content: sources.length ? `Search engines: ${names.join(', ')}${status}` : `No results from search engines: ${names.join(', ')}${status}`,
+    };
   };
 }

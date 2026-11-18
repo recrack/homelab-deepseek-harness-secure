@@ -293,6 +293,40 @@ class LauncherTests(unittest.TestCase):
                     launcher.main()
                 docker.assert_not_called()
 
+    def test_auto_approve_search_is_passed_only_to_the_collector(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory) / "project"
+            workspace.mkdir()
+            calls = []
+
+            def docker(*args, **kwargs):
+                calls.append(args)
+                result = MagicMock()
+                result.stdout = '[{"IPAM":{"Config":[{"Gateway":"172.20.0.1"}]}}]'
+                if args[0] == "inspect":
+                    network_name = args[1].removesuffix("-collector")
+                    result.stdout = '[{"NetworkSettings":{"Networks":{"' + network_name + '":{"IPAddress":"172.20.0.2"}}}}]'
+                return result
+
+            server = MagicMock(server_port=19000)
+            child = MagicMock()
+            child.wait.return_value = 0
+            env = {
+                "DSH_SEARXNG_URL": "http://172.20.0.3:8080",
+                "DSH_RUSTXNG_URL": "http://172.20.0.4:29483",
+                "DSH_SEARCH_NETWORK": "existing-search",
+            }
+            argv = ["run.py", "--workspace", str(workspace), "--state", directory + "/state",
+                    "--model", "local", "--base-url", "http://127.0.0.1:18080/v1",
+                    "--approval-file", directory + "/approval-url", "--search", "auto", "--auto-approve-search"]
+            with patch("sys.argv", argv), patch.dict(os.environ, env, clear=True), patch.object(launcher, "docker", side_effect=docker), patch.object(launcher, "make_server", return_value=server), patch.object(launcher.subprocess, "Popen", return_value=child) as launch, patch.object(launcher.subprocess, "run"), patch.object(launcher.platform, "system", return_value="Linux"), patch.object(launcher.os, "getuid", return_value=1000):
+                self.assertEqual(launcher.main(), 0)
+
+            collector = next(call for call in calls if "DSH_AUTO_APPROVE_SEARCH=1" in call)
+            self.assertTrue(collector[collector.index("--name") + 1].endswith("-collector"))
+            self.assertIn("DSH_AUTO_APPROVE_SEARCH=1", collector)
+            self.assertNotIn("DSH_AUTO_APPROVE_SEARCH=1", launch.call_args.args[0])
+
 
     def test_model_patch_outside_workspace_and_symlink_escape_fail_before_docker(self):
         with tempfile.TemporaryDirectory() as directory:

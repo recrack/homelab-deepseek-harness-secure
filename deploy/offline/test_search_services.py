@@ -12,12 +12,24 @@ from search_services import (
     SEARCH_ENGINE_LABEL,
     SearchServices,
     SOURCES,
+    _host_dns_servers,
     _matches_image,
     _port,
 )
 
 
 class SearchServiceTests(unittest.TestCase):
+    def test_host_dns_discovery_skips_loopback_and_uses_non_loopback_ipv4(self):
+        with tempfile.TemporaryDirectory() as directory:
+            upstream = Path(directory) / "resolved.conf"
+            fallback = Path(directory) / "resolv.conf"
+            upstream.write_text("nameserver 127.0.0.53\nnameserver 192.0.2.53\nnameserver 192.0.2.53\n")
+            fallback.write_text("nameserver 192.0.2.54\n")
+            self.assertEqual(_host_dns_servers((upstream, fallback)), ("192.0.2.53",))
+
+            upstream.write_text("nameserver 127.0.0.53\n")
+            self.assertEqual(_host_dns_servers((upstream, fallback)), ("192.0.2.54",))
+
     def test_reuse_requires_reviewed_digest_configuration_and_expected_port(self):
         searxng = {
             "Config": {
@@ -32,6 +44,9 @@ class SearchServiceTests(unittest.TestCase):
         }
         self.assertTrue(_matches_image(searxng, "searxng"))
         self.assertEqual(_port(searxng, "searxng"), 8080)
+        searxng["HostConfig"] = {"Dns": ["192.0.2.53"]}
+        self.assertFalse(_matches_image(searxng, "searxng", ("192.0.2.54",)))
+        self.assertTrue(_matches_image(searxng, "searxng", ("192.0.2.53",)))
         searxng["Config"]["Image"] = "searxng/searxng:latest"
         self.assertFalse(_matches_image(searxng, "searxng"))
         searxng["Config"]["ExposedPorts"] = {}
@@ -72,7 +87,7 @@ class SearchServiceTests(unittest.TestCase):
             return CompletedProcess(args, 0, stdout=json.dumps(result) if isinstance(result, (dict, list)) else result, stderr="")
 
         with tempfile.TemporaryDirectory() as directory:
-            manager = SearchServices("dsh-offline-run", Path(directory), "dsh-offline:local", docker=docker)
+            manager = SearchServices("dsh-offline-run", Path(directory), "dsh-offline:local", docker=docker, dns_servers=())
             endpoints = manager.start()
             self.assertEqual(endpoints["DSH_SEARXNG_URL"], "http://172.31.0.4:8080")
             self.assertEqual(endpoints["DSH_RUSTXNG_URL"], "http://172.31.0.5:29483")
@@ -139,6 +154,7 @@ class SearchServiceTests(unittest.TestCase):
                     "Name": "/" + name,
                     "Config": {"Image": args[args.index("--mount") + 2], "ExposedPorts": {f"{port}/tcp": {}}, "Labels": labels},
                     "NetworkSettings": {"Networks": {}},
+                    "HostConfig": {"Dns": [args[index + 1] for index in range(len(args) - 1) if args[index] == "--dns"]},
                 }
                 result = ""
             elif args[:2] == ("network", "connect"):
@@ -161,7 +177,8 @@ class SearchServiceTests(unittest.TestCase):
                 manager_dockerfile = checkout / ("container/Dockerfile" if engine == "searxng" else "Dockerfile")
                 manager_dockerfile.parent.mkdir(parents=True, exist_ok=True)
                 manager_dockerfile.write_text("FROM scratch\n")
-            manager = SearchServices("dsh-offline-run", cache, "dsh-offline:local", docker=docker)
+            dns_servers = ("192.0.2.53", "192.0.2.54")
+            manager = SearchServices("dsh-offline-run", cache, "dsh-offline:local", docker=docker, dns_servers=dns_servers)
             manager._clone = lambda engine: source_root / engine
             endpoints = manager.start()
             self.assertEqual(endpoints["DSH_SEARXNG_URL"], "http://172.32.0.4:8080")
@@ -170,6 +187,12 @@ class SearchServiceTests(unittest.TestCase):
             self.assertEqual(len(builds), 2)
             starts = [call for call in calls if call[0] == "run" and "--name" in call]
             self.assertEqual(len(starts), 2)
+            self.assertTrue(
+                all(
+                    [call[index + 1] for index in range(len(call) - 1) if call[index] == "--dns"] == list(dns_servers)
+                    for call in starts
+                )
+            )
             self.assertTrue(all("--publish" not in call for call in starts))
             self.assertTrue(all("--label" in call for call in starts))
             rust_config = Path(starts[1][starts[1].index("--mount") + 1].split("source=", 1)[1].split(",target=", 1)[0])
