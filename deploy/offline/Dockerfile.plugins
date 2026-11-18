@@ -9,7 +9,7 @@ RUN test -n "$HOMELAB_DSH_PLUGINS_COMMIT" \
     && node /opt/homelab-dsh-plugins/packages/dsh-family-account/scripts/build-client.mjs \
     && chmod -R a+rX /opt/homelab-dsh-plugins
 
-COPY deploy/offline/profile_plugins.py /opt/dsh/deploy/offline/profile_plugins.py
+COPY deploy/offline/profile_plugins.py deploy/offline/test_profile_plugins.py /opt/dsh/deploy/offline/
 
 RUN ln -sfn /opt/homelab-dsh-plugins/packages/dsh-family-account /opt/dsh/node_modules/dsh-family-account \
     && for package in \
