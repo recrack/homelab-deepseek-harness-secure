@@ -71,7 +71,7 @@ The plugin repository's [`plugins.json`](https://github.com/recrack/homelab-dsh-
 
 The host launcher mounts its current `cordis.patch.yml`, `prepare-presets.mjs`, and `hermes.patch.yml` into the container read-only. Changes to these mounted files take effect on the next member restart. `web-provider.mjs`, optional plugin packages, and compiled DSH code are copied into the image and require an image rebuild.
 
-For an existing compatible DSH image, [Dockerfile.plugins](Dockerfile.plugins) stages a new pinned plugin snapshot and profile installer without rebuilding DSH. Pass the local base image tag and the exact plugin repository commit with `DSH_BASE_IMAGE` and `HOMELAB_DSH_PLUGINS_COMMIT`; the resulting image retains the base image's firewall and runtime entrypoint. The current plugin snapshot is `22c95199c72fd2603ba65446975a3bc5ce7c5fb7`.
+For an existing compatible DSH image, [Dockerfile.plugins](Dockerfile.plugins) stages a new pinned plugin snapshot and profile installer without rebuilding DSH. Pass the local base image tag and the exact plugin repository commit with `DSH_BASE_IMAGE` and `HOMELAB_DSH_PLUGINS_COMMIT`; the resulting image retains the base image's firewall and runtime entrypoint. The current plugin snapshot is `67e755449366552e8f873d8f720fa8bff7c117ab`.
 
 The `dsh-context` snapshot keeps its context panels and blocks its automatic catalog, balance, and recommendation requests. Open Artifacts provides slides, design, design system, data, motion, and whiteboard skills with the shared Artifacts page. DSH Crew requires the running DSH hub and uses the selected local model for both worker tiers; it cannot fall back to a standalone DeepSeek runtime. The multimodal vision and image-generation providers are disabled.
 
