@@ -45,9 +45,10 @@ async function refresh(){if(busy)return;busy=true;try{const r=await fetch('/requ
 refresh();setInterval(refresh,1500);</script></html>`;
 
 /** Create both HTTP listeners; dependencies can be replaced by a local fake in tests. */
-export function createCollector({ provider, search, token, limits = limitsFromEnvironment() }) {
+export function createCollector({ provider, search, token, limits = limitsFromEnvironment(), autoApproveSearch = false }) {
   if (typeof token !== 'string' || token.length < 32) throw new Error('CONTROL_TOKEN must contain at least 32 characters');
   if (!provider || typeof provider.fetch !== 'function') throw new Error('HTTP fetch provider is required');
+  if (typeof autoApproveSearch !== 'boolean') throw new Error('Search auto-approval setting must be a boolean');
   const pending = new Map(), active = new Set();
   let closing = false;
   const send = (response, status, body) => {
@@ -66,19 +67,22 @@ export function createCollector({ provider, search, token, limits = limitsFromEn
     }
     try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw failure('INVALID_REQUEST', 'Invalid JSON'); }
   };
-  const approve = (operation, payload, signal) => new Promise((resolve, reject) => {
-    if (pending.size >= limits.MAX_PENDING) return reject(failure('QUEUE_FULL', 'Approval queue is full', 429));
-    const id = randomUUID();
-    const finish = error => {
-      clearTimeout(timer); signal.removeEventListener('abort', abort); pending.delete(id);
-      error ? reject(error) : resolve();
-    };
-    const abort = () => finish(failure('REQUEST_CANCELLED', 'Request was cancelled', 499));
-    const timer = setTimeout(() => finish(failure('APPROVAL_TIMEOUT', 'Approval expired', 408)), limits.APPROVAL_TIMEOUT_MS);
-    pending.set(id, { operation, payload, finish });
-    signal.addEventListener('abort', abort, { once: true });
-    if (signal.aborted) abort();
-  });
+  const approve = (operation, payload, signal) => {
+    if (operation === 'search' && autoApproveSearch) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      if (pending.size >= limits.MAX_PENDING) return reject(failure('QUEUE_FULL', 'Approval queue is full', 429));
+      const id = randomUUID();
+      const finish = error => {
+        clearTimeout(timer); signal.removeEventListener('abort', abort); pending.delete(id);
+        error ? reject(error) : resolve();
+      };
+      const abort = () => finish(failure('REQUEST_CANCELLED', 'Request was cancelled', 499));
+      const timer = setTimeout(() => finish(failure('APPROVAL_TIMEOUT', 'Approval expired', 408)), limits.APPROVAL_TIMEOUT_MS);
+      pending.set(id, { operation, payload, finish });
+      signal.addEventListener('abort', abort, { once: true });
+      if (signal.aborted) abort();
+    });
+  };
   const api = createServer(async (request, response) => {
     const controller = new AbortController(); active.add(controller);
     response.on('close', () => { if (!response.writableEnded) controller.abort(); });
@@ -126,10 +130,12 @@ export function createCollector({ provider, search, token, limits = limitsFromEn
 export default class PublicCollector {
   constructor(ctx) {
     const limits = limitsFromEnvironment();
+    const autoApproveSearchValue = process.env.DSH_AUTO_APPROVE_SEARCH ?? '0';
+    if (autoApproveSearchValue !== '0' && autoApproveSearchValue !== '1') throw new Error('DSH_AUTO_APPROVE_SEARCH must be 0 or 1');
     const provider = new HttpFetchProvider({ maxResponseBytes: limits.MAX_RESPONSE_BYTES, maxBodyChars: limits.MAX_BODY_CHARS, timeoutMs: limits.TIMEOUT_MS, maxRedirects: limits.MAX_REDIRECTS, userAgent: 'dsh-public-collector' });
     const search = process.env.DSH_SEARXNG_URL || process.env.DSH_RUSTXNG_URL
       ? createLocalSearch({ searxngUrl: process.env.DSH_SEARXNG_URL, rustxngUrl: process.env.DSH_RUSTXNG_URL, timeoutMs: limits.TIMEOUT_MS, maxBytes: limits.MAX_RESPONSE_BYTES }) : undefined;
-    const collector = createCollector({ provider, search, token: process.env.CONTROL_TOKEN, limits });
+    const collector = createCollector({ provider, search, token: process.env.CONTROL_TOKEN, limits, autoApproveSearch: autoApproveSearchValue === '1' });
     ctx.effect(async () => {
       try {
         for (const [server, port] of [[collector.api, 8080], [collector.control, 8081]]) await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, '0.0.0.0', resolve); });

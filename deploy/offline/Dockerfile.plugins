@@ -4,7 +4,7 @@ FROM ${DSH_BASE_IMAGE}
 ARG HOMELAB_DSH_PLUGINS_COMMIT
 RUN test -n "$HOMELAB_DSH_PLUGINS_COMMIT" \
     && git -C /opt/homelab-dsh-plugins fetch --depth=1 origin "$HOMELAB_DSH_PLUGINS_COMMIT" \
-    && git -C /opt/homelab-dsh-plugins checkout --detach FETCH_HEAD \
+    && git -C /opt/homelab-dsh-plugins checkout --force --detach FETCH_HEAD \
     && node /opt/homelab-dsh-plugins/scripts/install-open-artifacts.mjs \
     && node /opt/homelab-dsh-plugins/packages/dsh-family-account/scripts/build-client.mjs \
     && chmod -R a+rX /opt/homelab-dsh-plugins

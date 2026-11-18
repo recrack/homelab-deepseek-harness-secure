@@ -1,6 +1,7 @@
 """Reuse DSH-managed search containers or build pinned upstream sources."""
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -29,6 +30,40 @@ SOURCES = {
 SEARCH_ENGINE_LABEL = "org.deepseek-ai.dsh.search-engine"
 SEARCH_CONFIGURATION_LABEL = "org.deepseek-ai.dsh.search-configuration"
 SEARCH_CONFIGURATION_VERSION = "offline-v1"
+HOST_DNS_FILES = (Path("/run/systemd/resolve/resolv.conf"), Path("/etc/resolv.conf"))
+
+
+def _host_dns_servers(paths=HOST_DNS_FILES) -> tuple[str, ...]:
+    """Return the first host resolver list with usable IPv4 addresses."""
+    for path in paths:
+        try:
+            contents = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        servers = []
+        for line in contents.splitlines():
+            fields = line.split()
+            if len(fields) != 2 or fields[0] != "nameserver":
+                continue
+            try:
+                address = ipaddress.ip_address(fields[1])
+            except ValueError:
+                continue
+            if (
+                address.version != 4
+                or address.is_loopback
+                or address.is_link_local
+                or address.is_unspecified
+                or address.is_multicast
+                or address == ipaddress.IPv4Address("255.255.255.255")
+            ):
+                continue
+            value = str(address)
+            if value not in servers:
+                servers.append(value)
+        if servers:
+            return tuple(servers)
+    return ()
 
 
 def _run(*args: str, capture: bool = False) -> subprocess.CompletedProcess:
@@ -45,24 +80,36 @@ def _port(container: dict, engine: str) -> int | None:
     return None
 
 
-def _matches_image(container: dict, engine: str) -> bool:
+def _matches_image(container: dict, engine: str, dns_servers: tuple[str, ...] | None = None) -> bool:
     """Match a pinned image only when the DSH offline settings label is present."""
     config = container.get("Config", {})
     image = config.get("Image", "")
     labels = config.get("Labels") or {}
     if labels.get(SEARCH_ENGINE_LABEL) != engine or labels.get(SEARCH_CONFIGURATION_LABEL) != SEARCH_CONFIGURATION_VERSION:
         return False
-    return image == SOURCES[engine]["upstream_image"]
+    matches = image == SOURCES[engine]["upstream_image"]
+    if not matches or dns_servers is None:
+        return matches
+    configured = container.get("HostConfig", {}).get("Dns") or []
+    return configured == list(dns_servers)
 
 
 class SearchServices:
     """Attach reviewed search engines to a temporary internal Docker network."""
 
-    def __init__(self, name: str, cache: Path, image: str, docker=_run):
+    def __init__(
+        self,
+        name: str,
+        cache: Path,
+        image: str,
+        docker=_run,
+        dns_servers: tuple[str, ...] | None = None,
+    ):
         self.name = name
         self.cache = cache
         self.image = image
         self.docker = docker
+        self.dns_servers = _host_dns_servers() if dns_servers is None else dns_servers
         self.network = name + "-search"
         self.egress_network = name + "-search-egress"
         self.managed: list[str] = []
@@ -166,11 +213,14 @@ disabled = true
         config = self._config(engine)
         mount = f"type=bind,source={config},target=/etc/searxng/settings.yml,readonly" if engine == "searxng" else f"type=bind,source={config},target=/app/settings.toml,readonly"
         command = ["run", "--detach", "--rm", "--pull=never", "--name", name,
-                   "--network", self.egress_network, "--cap-drop", "ALL",
+                   "--network", self.egress_network]
+        for server in self.dns_servers:
+            command.extend(("--dns", server))
+        command.extend(("--cap-drop", "ALL",
                    "--security-opt", "no-new-privileges", "--pids-limit", "256",
                    "--label", f"{SEARCH_ENGINE_LABEL}={engine}",
                    "--label", f"{SEARCH_CONFIGURATION_LABEL}={SEARCH_CONFIGURATION_VERSION}",
-                   "--mount", mount, source["image"]]
+                   "--mount", mount, source["image"]))
         if engine == "rustxng":
             command.extend(("--profile", "standard", "--bind", "0.0.0.0", "--port", str(source["port"])))
         self.docker(*command, capture=True)
@@ -187,7 +237,10 @@ disabled = true
         inspected = json.loads(self.docker("inspect", *ids, capture=True).stdout) if ids else []
         selected: dict[str, dict] = {}
         for engine in SOURCES:
-            candidates = [item for item in inspected if _matches_image(item, engine) and _port(item, engine)]
+            candidates = [
+                item for item in inspected
+                if _matches_image(item, engine, self.dns_servers) and _port(item, engine)
+            ]
             if len(candidates) > 1:
                 raise ValueError(f"Multiple reviewed {engine} containers are running; select services explicitly")
             if candidates:

@@ -69,6 +69,29 @@ test('local search runs only after approval and rejects private context fields',
   assert.equal(searched.length, 1);
 });
 
+test('auto-approval skips search only; public fetch still requires approval', async t => {
+  const searched = [];
+  const { api, control, calls } = await setup(t, {
+    autoApproveSearch: true,
+    search: async payload => {
+      searched.push(payload);
+      return { sources: [{ url: 'https://example.com/', title: 'Public result' }], truncated: false };
+    },
+  });
+  const search = await call(api, '/search', { method: 'POST', body: { query: 'public query', maxResults: 1 } });
+  assert.equal(search.status, 200);
+  assert.deepEqual(searched, [{ query: 'public query', maxResults: 1 }]);
+  assert.deepEqual((await call(control, '/requests', { authorized: true })).body, []);
+
+  const fetch = call(api, '/fetch', { method: 'POST', body: { url: 'https://example.com/' } });
+  const row = await pending(control);
+  assert.equal(row.operation, 'fetch');
+  assert.deepEqual(calls, []);
+  await call(control, `/requests/${row.id}/allow`, { method: 'POST', authorized: true });
+  assert.equal((await fetch).status, 200);
+  assert.deepEqual(calls, [{ url: 'https://example.com/' }]);
+});
+
 test('denied, expired and cancelled requests send nothing and leave no queue entry', async t => {
   const { api, control, calls } = await setup(t, { search: async () => { throw new Error('Denied search must not run'); }, limits: { ...limitsFromEnvironment({}), APPROVAL_TIMEOUT_MS: 100 } });
   let result = call(api, '/search', { method: 'POST', body: { query: '공개 문서 검색', maxResults: 2 } });
@@ -89,6 +112,7 @@ test('strict limits reject credentials and unknown values before queueing', () =
   assert.throws(() => limitsFromEnvironment({ DSH_COLLECTOR_TIMEOUT_MS: '0' }));
   assert.throws(() => createCollector({ token: 'short', provider: { fetch() {} } }));
   assert.throws(() => createCollector({ token, provider: {} }), /fetch provider is required/);
+  assert.throws(() => createCollector({ token, provider: { fetch() {} }, autoApproveSearch: '1' }), /boolean/);
 });
 
 test('queue capacity and complete lifecycle cancellation keep network untouched', async t => {

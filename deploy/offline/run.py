@@ -92,6 +92,7 @@ def main():
     parser.add_argument("--browser-engine", choices=("chromium", "camoufox"), default="chromium", help="browser engine for dsh-browser; Camoufox requires the optional image")
     parser.add_argument("--browser-origin", action="append", default=[], metavar="LOCAL_ORIGIN")
     parser.add_argument("--search", choices=("auto", "off"), default="auto")
+    parser.add_argument("--auto-approve-search", action="store_true", help="skip per-query approval for search; public fetch still requires approval")
     parser.add_argument("--image", default="dsh-offline:local")
     parser.add_argument("--profile", choices=("web", "headless"), default="web")
     parser.add_argument("--context-window", type=int, default=262144)
@@ -134,8 +135,8 @@ def main():
             parser.error("Local search requires both engine URLs and DSH_SEARCH_NETWORK")
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", search_network):
             parser.error("DSH_SEARCH_NETWORK is invalid")
-    if args.search == "off" and search_env:
-        parser.error("Search environment overrides cannot be used with --search off")
+    if args.search == "off" and (search_env or args.auto_approve_search):
+        parser.error("Search options cannot be used with --search off")
     workspace = args.workspace.resolve(strict=True)
     state = args.state.resolve()
     home = Path.home()
@@ -208,6 +209,7 @@ def main():
                              "--user", "65534:65534", "--workdir", "/opt/dsh",
                              "--publish", f"127.0.0.1:{args.collector_port}:8081",
                              "--env", "DSH_HOME=/opt/dsh/deploy/offline/collector-home",
+                             "--env", "DSH_AUTO_APPROVE_SEARCH=" + ("1" if args.auto_approve_search else "0"),
                              "--env", "CONTROL_TOKEN=" + token,
                              "--entrypoint", "node", args.image, "--import", "tsx/esm", "apps/cli/src/bin.ts",
                              "--profile", "public-web", "--patch", "/opt/dsh/deploy/offline/collector.patch.yml"]
