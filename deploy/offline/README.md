@@ -2,6 +2,11 @@
 
 This deployment runs DeepSeek Harness in a Docker container on macOS or Linux. The agent sends model requests only to the private OpenAI-compatible server selected by `--base-url`; the DSH process has no direct public network route. A separate collector handles explicitly approved web requests.
 
+## Pigma deployment
+
+The Pigma family test runtimes use the merged plugin snapshot `a438454eb800a64ea217238095970b44578d074b`, with Camoufox `159.0-beta.42` selected for the managed browser. The image also contains ARM64 Chrome for Testing `158.0.8127.36` for Chromium-mode sessions. On Pigma, account-level auto-approval covers search and eligible public page reads. The managed browser's origin allowlist is configured separately. The stock collector in this repository auto-approves searches only and asks before fetching a public URL.
+
+
 ## Build and run
 
 Build the DSH image from the repository root. The image build fetches the pinned `homelab-dsh-plugins` commit and builds its packages; the first automatic search start can also clone and build pinned search engine sources. The launcher never pulls the DSH image or clones plugins at runtime.
