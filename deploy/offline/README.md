@@ -152,3 +152,5 @@ Pass the extracted `chrome-linux-arm64` directory as `--build-context chrome_rel
 The Chrome launcher uses the Linux desktop Chrome User-Agent for managed sessions.
 Update its major version when updating the pinned Chrome release.
 The DSH browser discovery prefers `/usr/bin/google-chrome` in that image.
+
+Add `--plugin dsh-super-kanban` to enable the Super Kanban board in the Web profile. Automatic session scanning defaults to off.

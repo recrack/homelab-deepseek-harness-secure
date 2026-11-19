@@ -50,6 +50,7 @@ class ProfilePluginsTests(unittest.TestCase):
                 "@deepseek-ai/dsh-web-app",
                 "dsh-family-account",
                 "dsh-context",
+                "dsh-super-kanban",
                 "dsh-claude-artifacts",
                 "dsh-claude-slides",
                 "dsh-claude-design",

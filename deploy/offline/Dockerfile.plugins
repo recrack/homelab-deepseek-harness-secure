@@ -14,6 +14,7 @@ RUN test -n "$HOMELAB_DSH_PLUGINS_COMMIT" \
 COPY deploy/offline/profile_plugins.py deploy/offline/test_profile_plugins.py /opt/dsh/deploy/offline/
 
 RUN ln -sfn /opt/homelab-dsh-plugins/packages/dsh-family-account /opt/dsh/node_modules/dsh-family-account \
+    && ln -sfn /opt/homelab-dsh-plugins/packages/dsh-super-kanban /opt/dsh/node_modules/dsh-super-kanban \
     && for package in \
       dsh-claude-artifacts \
       dsh-claude-slides \

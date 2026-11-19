@@ -16,6 +16,7 @@ const pluginIds = new Set([
   'dsh-claude-motion',
   'dsh-claude-whiteboard',
   'dsh-crew',
+  'dsh-super-kanban',
 ]);
 
 /** Read current shipped presets, retaining deferred Loader expressions and every other row. */

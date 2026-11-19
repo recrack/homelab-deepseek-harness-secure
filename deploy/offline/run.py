@@ -31,6 +31,7 @@ PLUGIN_IDS = frozenset((
     "dsh-claude-motion",
     "dsh-claude-whiteboard",
     "dsh-crew",
+    "dsh-super-kanban",
 ))
 
 

@@ -12,7 +12,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && npm install --global pnpm@11.28.5
 
-ARG HOMELAB_DSH_PLUGINS_COMMIT=a438454eb800a64ea217238095970b44578d074b
+ARG HOMELAB_DSH_PLUGINS_COMMIT=f88c13f5d1ab35e1b429c5d63233e052a427a3c7
 RUN mkdir -p /opt/homelab-dsh-plugins \
     && git -C /opt/homelab-dsh-plugins init \
     && git -C /opt/homelab-dsh-plugins remote add origin https://github.com/recrack/homelab-dsh-plugins.git \
@@ -31,6 +31,7 @@ RUN pnpm install --frozen-lockfile --ignore-scripts \
     && mkdir -p node_modules/@zseven-w \
     && ln -s /opt/homelab-dsh-plugins/packages/dsh-family-account node_modules/dsh-family-account \
     && ln -s /opt/homelab-dsh-plugins/packages/dsh-browser node_modules/@zseven-w/dsh-browser \
+    && ln -s /opt/homelab-dsh-plugins/packages/dsh-super-kanban node_modules/dsh-super-kanban \
     && ln -s /opt/homelab-dsh-plugins/packages/dsh-context node_modules/dsh-context \
     && ln -s /opt/homelab-dsh-plugins/packages/open-artifacts/generated/dsh-claude-artifacts node_modules/dsh-claude-artifacts \
     && ln -s /opt/homelab-dsh-plugins/packages/open-artifacts/generated/dsh-claude-slides node_modules/dsh-claude-slides \
