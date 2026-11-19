@@ -21,6 +21,7 @@ OPEN_ARTIFACTS_PACKAGES = frozenset(OPEN_ARTIFACTS_PLUGIN_IDS)
 PLUGIN_PACKAGES = {
     "dsh-browser": "@zseven-w/dsh-browser",
     "dsh-context": "dsh-context",
+    "dsh-super-kanban": "dsh-super-kanban",
     "dsh-claude-artifacts": "dsh-claude-artifacts",
     "dsh-claude-slides": "dsh-claude-slides",
     "dsh-claude-design": "dsh-claude-design",
@@ -33,6 +34,7 @@ PLUGIN_PACKAGES = {
 ALL_PLUGIN_PACKAGES = {**BASE_PLUGIN_PACKAGES, **PLUGIN_PACKAGES}
 PLUGIN_BUNDLE_NAMES = {
     "dsh-context": "dsh-context",
+    "dsh-super-kanban": "dsh-super-kanban",
     "dsh-claude-artifacts": "dsh-claude-artifacts",
     "dsh-claude-slides": "dsh-claude-slides",
     "dsh-claude-design": "dsh-claude-design",
