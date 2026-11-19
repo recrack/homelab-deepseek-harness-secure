@@ -69,7 +69,7 @@ The plugin repository's [`plugins.json`](https://github.com/recrack/homelab-dsh-
 
 `dsh-family-account` is the family deployment's required base bundle, not an optional `--plugin` selection. Its source and client build live in `homelab-dsh-plugins`; advance the pinned repository commit in the image build after publishing a plugin change.
 
-The host launcher mounts its current `cordis.patch.yml`, `prepare-presets.mjs`, and `hermes.patch.yml` into the container read-only. Changes to these mounted files take effect on the next member restart. `web-provider.mjs`, optional plugin packages, and compiled DSH code are copied into the image and require an image rebuild.
+The host launcher mounts its current `cordis.patch.yml`, `prepare-presets.mjs`, and `hermes.patch.yml` into the container read-only. Changes to these mounted files take effect on the next member restart. The launcher appends the deployment persona to the generated Standard, PTC, and Cordis Web presets. `web-provider.mjs`, optional plugin packages, and compiled DSH code are copied into the image and require an image rebuild.
 
 For an existing compatible DSH image, [Dockerfile.plugins](Dockerfile.plugins) stages a new pinned plugin snapshot and profile installer without rebuilding DSH. Pass the local base image tag and the exact plugin repository commit with `DSH_BASE_IMAGE` and `HOMELAB_DSH_PLUGINS_COMMIT`; the resulting image retains the base image's firewall and runtime entrypoint. The current plugin snapshot is `67e755449366552e8f873d8f720fa8bff7c117ab`.
 

@@ -27,7 +27,7 @@ test('browser tools are only mounted for a selected plugin', async () => {
   assert.deepEqual(browser.isolate, { zsevenBrowserDriver: true });
   assert.equal(browser.config.engine, 'chromium');
   assert.deepEqual(browser.config.allowedOrigins, []);
-  for (const row of local.filter(row => !['tool-web', 'dsh-browser'].includes(row.id))) {
+  for (const row of local.filter(row => !['tool-web', 'dsh-browser', 'persona'].includes(row.id))) {
     const original = shipped.find(candidate => candidate.id === row.id);
     assert.ok(original, row.id);
     assert.deepEqual(row.config, original.config, row.id);
@@ -55,6 +55,8 @@ test('historical PTC and Cordis presets keep tools and wait for external approva
     const rows = patch.config.plugins;
     assert.ok(rows.some(row => row.id === 'tool-bash'));
     assert.ok(rows.some(row => row.id === 'delegation'));
+    const persona = rows.find(row => row.id === 'persona');
+    assert.match(persona.config.suffix, /launch announcement/, patch.id);
     const web = rows.find(row => row.id === 'tool-web');
     assert.equal(web.config.searchTimeoutMs, 370000);
     assert.equal(web.config.fetchTimeoutMs, 370000);
