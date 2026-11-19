@@ -69,10 +69,11 @@ test('local search runs only after approval and rejects private context fields',
   assert.equal(searched.length, 1);
 });
 
-test('auto-approval skips search only; public fetch still requires approval', async t => {
+test('auto-approval skips the queue for both search and validated public URLs', async t => {
   const searched = [];
   const { api, control, calls } = await setup(t, {
     autoApproveSearch: true,
+    limits: { ...limitsFromEnvironment({}), APPROVAL_TIMEOUT_MS: 100 },
     search: async payload => {
       searched.push(payload);
       return { sources: [{ url: 'https://example.com/', title: 'Public result' }], truncated: false };
@@ -83,12 +84,13 @@ test('auto-approval skips search only; public fetch still requires approval', as
   assert.deepEqual(searched, [{ query: 'public query', maxResults: 1 }]);
   assert.deepEqual((await call(control, '/requests', { authorized: true })).body, []);
 
-  const fetch = call(api, '/fetch', { method: 'POST', body: { url: 'https://example.com/' } });
-  const row = await pending(control);
-  assert.equal(row.operation, 'fetch');
-  assert.deepEqual(calls, []);
-  await call(control, `/requests/${row.id}/allow`, { method: 'POST', authorized: true });
-  assert.equal((await fetch).status, 200);
+  const fetched = await call(api, '/fetch', { method: 'POST', body: { url: 'https://example.com/' } });
+  assert.equal(fetched.status, 200);
+  assert.deepEqual((await call(control, '/requests', { authorized: true })).body, []);
+  for (const url of ['https://api.deepseek.com/', 'http://127.0.0.1/', 'http://[::1]/']) {
+    const blocked = await call(api, '/fetch', { method: 'POST', body: { url } });
+    assert.equal(blocked.status, 403);
+  }
   assert.deepEqual(calls, [{ url: 'https://example.com/' }]);
 });
 

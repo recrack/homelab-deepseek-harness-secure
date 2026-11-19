@@ -92,7 +92,7 @@ def main():
     parser.add_argument("--browser-engine", choices=("chromium", "camoufox"), default="chromium", help="browser engine for dsh-browser; Camoufox requires the optional image")
     parser.add_argument("--browser-origin", action="append", default=[], metavar="LOCAL_ORIGIN")
     parser.add_argument("--search", choices=("auto", "off"), default="auto")
-    parser.add_argument("--auto-approve-search", action="store_true", help="skip per-query approval for search; public fetch still requires approval")
+    parser.add_argument("--auto-approve-search", action="store_true", help="skip per-request approval for search and public page fetches")
     parser.add_argument("--image", default="dsh-offline:local")
     parser.add_argument("--profile", choices=("web", "headless"), default="web")
     parser.add_argument("--context-window", type=int, default=262144)
@@ -213,6 +213,9 @@ def main():
                              "--env", "CONTROL_TOKEN=" + token,
                              "--entrypoint", "node", args.image, "--import", "tsx/esm", "apps/cli/src/bin.ts",
                              "--profile", "public-web", "--patch", "/opt/dsh/deploy/offline/collector.patch.yml"]
+        collector_dns = os.environ.get("DSH_COLLECTOR_DNS_SERVER")
+        if collector_dns is not None:
+            collector_command[1:1] = ["--env", "DSH_COLLECTOR_DNS_SERVER=" + collector_dns]
         if search_env:
             options = []
             for key, value in search_env.items():

@@ -4,7 +4,7 @@ This deployment runs DeepSeek Harness in a Docker container on macOS or Linux. T
 
 ## Pigma deployment
 
-The Pigma family test runtimes use the merged plugin snapshot `a438454eb800a64ea217238095970b44578d074b`, with Camoufox `159.0-beta.42` selected for the managed browser. The image also contains ARM64 Chrome for Testing `158.0.8127.36` for Chromium-mode sessions. On Pigma, account-level auto-approval covers search and eligible public page reads. The managed browser's origin allowlist is configured separately. The stock collector in this repository auto-approves searches only and asks before fetching a public URL.
+The Pigma family test runtimes use the merged plugin snapshot `a438454eb800a64ea217238095970b44578d074b`, with Camoufox `159.0-beta.42` selected for the managed browser. The image also contains ARM64 Chrome for Testing `158.0.8127.36` for Chromium-mode sessions. On Pigma, account-level auto-approval covers search and eligible public page reads. The managed browser's origin allowlist is configured separately. Automatic approval is opt-in and public destinations are checked before connecting.
 
 
 ## Build and run
@@ -88,7 +88,7 @@ For standard DSH plugin development, see [your first plugin](../../docs/user/dev
 
 Search starts automatically by default. The launcher reuses a running container only when its image digest and DSH configuration labels identify the reviewed offline settings; other existing containers are left untouched. Missing engines start from their pinned images, and the launcher clones their pinned source commits under `~/.cache/dsh-offline/search-services` only when an image is missing. Managed containers stop and temporary networks are removed when the launcher exits. `--search off` disables this behavior.
 
-Per-query approval is enabled by default. `--auto-approve-search` opts the isolated collector into automatic approval for search queries only; public URL fetches still require approval. The flag cannot be used with `--search off`.
+Per-query approval is enabled by default. `--auto-approve-search` opts the isolated collector into automatic approval for searches and eligible public page requests. The flag cannot be used with `--search off`. The collector only connects to public IPv4 addresses. Set `DSH_COLLECTOR_DNS_SERVER` to a public IPv4 resolver if Docker DNS cannot resolve public sites.
 
 Managed search containers use the host's non-loopback IPv4 DNS servers from `/run/systemd/resolve/resolv.conf`, falling back to `/etc/resolv.conf`. Loopback stub resolvers are skipped; if neither file provides a usable resolver, Docker's default DNS applies. These DNS settings apply only to SearXNG and RustXNG.
 
@@ -112,7 +112,7 @@ The collector can also fetch a public HTTP(S) URL after explicit approval. DeepS
 
 ## Research with DSH
 
-Open the Web UI and ask for current, source-backed information. By default, DSH sends each `web_search` query through the collector, which displays the exact query for approval before forwarding it to the local search engines. `--auto-approve-search` skips this step for search queries; each public `web_fetch` request still waits for approval. If the product page cannot be read, DSH searches for another official source for the same model, such as the manufacturer announcement or documentation repository. Ask DSH to prefer primary sources, compare independent sources, state publication dates and uncertainty, and cite source URLs. For example:
+Open the Web UI and ask for current, source-backed information. By default, DSH sends each `web_search` query through the collector, which displays the exact query for approval before forwarding it to the local search engines. `--auto-approve-search` skips this step for searches and eligible public `web_fetch` requests. If the product page cannot be read, DSH searches for another official source for the same model, such as the manufacturer announcement or documentation repository. Ask DSH to prefer primary sources, compare independent sources, state publication dates and uncertainty, and cite source URLs. For example:
 
 > Research [question]. Find primary sources, fetch relevant pages after approval, compare claims across independent sources, and cite every factual claim. Separate confirmed facts from inference and include publication dates.
 
@@ -136,7 +136,7 @@ The DSH container starts with IPv4 and IPv6 input and output policies set to DRO
 
 The base Cordis overlay disables DeepSeek model and account providers, DeepSeek web providers, remote session logging, OpenTelemetry session telemetry, plugin management, product analytics, account UI, and account notifications. Account notifications require the upstream account services, which this family login does not provide. The model relay does not emit access logs. Telemetry opt-out environment variables are also set. These controls apply to this Docker deployment; a manually configured model server, search service, Hermes sidecar, or trusted `--model-patch` remains separately configured.
 
-The collector accepts only `{query,maxResults}` for search and `{url}` for fetch. By default, it queues the exact request until a person approves it in the host-only page. With `--auto-approve-search`, search queries bypass that queue; URL fetches still require approval. Queries go only to configured search engines, which may forward them to their configured public providers; those providers see the query and the search engine's public IP. The approval URL contains a bearer token in its fragment; keep it private. Failed approval, local search errors, blocked destinations, or retrieval failures return an error without switching to another provider.
+The collector accepts only `{query,maxResults}` for search and `{url}` for fetch. By default, it queues the exact request until a person approves it in the host-only page. With `--auto-approve-search`, search and eligible public page requests bypass that queue. Queries go only to configured search engines, which may forward them to their configured public providers; those providers see the query and the search engine's public IP. The approval URL contains a bearer token in its fragment; keep it private. Failed approval, local search errors, blocked destinations, or retrieval failures return an error without switching to another provider.
 
 The launcher keeps the workspace at its host absolute path for imported session compatibility. Existing Session and attachment directories can be copied into `STATE/home/.dsh` while preserving relative paths and generations. Do not copy host credentials or the host's plugin configuration.
 
