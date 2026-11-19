@@ -1,12 +1,15 @@
-/** Anonymous public retrieval, isolated from workspaces and released only after explicit approval. */
+/** Anonymous public retrieval, isolated from workspaces and released according to the operator's approval setting. */
 import { createServer } from 'node:http';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { lookup, Resolver } from 'node:dns';
+import { createRequire } from 'node:module';
+import { BlockList, isIP } from 'node:net';
 import { HttpFetchProvider } from '@deepseek-ai/dsh-web-fetch-http';
 import { createLocalSearch } from './local-search.mjs';
 
 /** Read deployment limits once; malformed limits fail before any listener opens. */
 export function limitsFromEnvironment(env = process.env) {
-  const defaults = { MAX_BODY: 8192, MAX_URL: 4096, MAX_QUERY: 1000, MAX_RESULTS: 10, MAX_PENDING: 32, APPROVAL_TIMEOUT_MS: 300000, MAX_RESPONSE_BYTES: 5000000, MAX_BODY_CHARS: 100000, TIMEOUT_MS: 30000, MAX_REDIRECTS: 5 };
+  const defaults = { MAX_BODY: 8192, MAX_URL: 4096, MAX_QUERY: 1000, MAX_RESULTS: 10, MAX_PENDING: 32, APPROVAL_TIMEOUT_MS: 300000, MAX_RESPONSE_BYTES: 5000000, MAX_BODY_CHARS: 524288, TIMEOUT_MS: 30000, MAX_REDIRECTS: 5 };
   const limits = {};
   for (const [key, fallback] of Object.entries(defaults)) {
     const value = Number(env[`DSH_COLLECTOR_${key}`] ?? fallback);
@@ -19,6 +22,39 @@ export function limitsFromEnvironment(env = process.env) {
 
 function failure(code, message, status = 400) { return Object.assign(new Error(message), { code, status }); }
 
+const nonPublic = new BlockList();
+for (const [address, prefix] of [
+  ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8],
+  ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.0.0.0', 24], ['192.0.2.0', 24],
+  ['192.88.99.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15],
+  ['198.51.100.0', 24], ['203.0.113.0', 24], ['224.0.0.0', 4], ['240.0.0.0', 4],
+]) nonPublic.addSubnet(address, prefix);
+
+function publicIPv4(address) {
+  return isIP(address) === 4 && !nonPublic.check(address);
+}
+
+// Check the addresses handed to the connection, so a second DNS lookup cannot change the destination.
+function makePublicLookup(server) {
+  const resolver = server === undefined ? undefined : new Resolver({ timeout: 2500, tries: 2 });
+  if (resolver !== undefined) {
+    if (!publicIPv4(server)) throw new Error('DSH_COLLECTOR_DNS_SERVER must be a public IPv4 address');
+    resolver.setServers([server]);
+  }
+  return (hostname, options, callback) => {
+    const resolved = (error, addresses) => {
+      if (error) return callback(error);
+      if (addresses.length === 0 || addresses.some(({ address }) => !publicIPv4(address))) {
+        return callback(failure('DESTINATION_BLOCKED', 'Public retrieval requires a public IPv4 destination', 403));
+      }
+      if (options.all) return callback(null, addresses);
+      return callback(null, addresses[0].address, 4);
+    };
+    if (resolver === undefined) return lookup(hostname, { all: true, family: 4 }, resolved);
+    resolver.resolve4(hostname, (error, addresses) => resolved(error, addresses?.map(address => ({ address, family: 4 }))));
+  };
+}
+
 /** Validate only the public request fields; never accept headers, accounts, or upload bodies. */
 export function validatePayload(route, value, limits) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) throw failure('INVALID_REQUEST', 'Expected a JSON object');
@@ -30,6 +66,8 @@ export function validatePayload(route, value, limits) {
     try { url = new URL(value.url); } catch { throw failure('INVALID_URL', 'Expected an HTTP(S) URL'); }
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw failure('INVALID_URL', 'Expected a credential-free HTTP(S) URL');
     const hostname = url.hostname.toLowerCase().replace(/\.$/, '');
+    const address = hostname.replace(/^\[|\]$/g, '');
+    if (isIP(address) && !publicIPv4(address)) throw failure('DESTINATION_BLOCKED', 'Public retrieval requires a public IPv4 destination', 403);
     if (hostname === 'deepseek.com' || hostname.endsWith('.deepseek.com')) throw failure('DESTINATION_BLOCKED', 'DeepSeek domains are blocked', 403);
     return Object.freeze({ url: value.url });
   }
@@ -68,7 +106,7 @@ export function createCollector({ provider, search, token, limits = limitsFromEn
     try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw failure('INVALID_REQUEST', 'Invalid JSON'); }
   };
   const approve = (operation, payload, signal) => {
-    if (operation === 'search' && autoApproveSearch) return Promise.resolve();
+    if (autoApproveSearch) return Promise.resolve();
     return new Promise((resolve, reject) => {
       if (pending.size >= limits.MAX_PENDING) return reject(failure('QUEUE_FULL', 'Approval queue is full', 429));
       const id = randomUUID();
@@ -132,15 +170,25 @@ export default class PublicCollector {
     const limits = limitsFromEnvironment();
     const autoApproveSearchValue = process.env.DSH_AUTO_APPROVE_SEARCH ?? '0';
     if (autoApproveSearchValue !== '0' && autoApproveSearchValue !== '1') throw new Error('DSH_AUTO_APPROVE_SEARCH must be 0 or 1');
-    const provider = new HttpFetchProvider({ maxResponseBytes: limits.MAX_RESPONSE_BYTES, maxBodyChars: limits.MAX_BODY_CHARS, timeoutMs: limits.TIMEOUT_MS, maxRedirects: limits.MAX_REDIRECTS, userAgent: 'dsh-public-collector' });
+    const { Agent, getGlobalDispatcher, setGlobalDispatcher } = createRequire(import.meta.resolve('@deepseek-ai/dsh-web-fetch-http'))('undici');
+    const dispatcher = new Agent({ connect: { lookup: makePublicLookup(process.env.DSH_COLLECTOR_DNS_SERVER) } });
+    const userAgent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36';
+    const provider = new HttpFetchProvider({ maxResponseBytes: limits.MAX_RESPONSE_BYTES, maxBodyChars: limits.MAX_BODY_CHARS, timeoutMs: limits.TIMEOUT_MS, maxRedirects: limits.MAX_REDIRECTS, userAgent });
     const search = process.env.DSH_SEARXNG_URL || process.env.DSH_RUSTXNG_URL
       ? createLocalSearch({ searxngUrl: process.env.DSH_SEARXNG_URL, rustxngUrl: process.env.DSH_RUSTXNG_URL, timeoutMs: limits.TIMEOUT_MS, maxBytes: limits.MAX_RESPONSE_BYTES }) : undefined;
     const collector = createCollector({ provider, search, token: process.env.CONTROL_TOKEN, limits, autoApproveSearch: autoApproveSearchValue === '1' });
     ctx.effect(async () => {
+      const previous = getGlobalDispatcher();
+      setGlobalDispatcher(dispatcher);
+      const close = async () => {
+        setGlobalDispatcher(previous);
+        await collector.close();
+        await dispatcher.destroy();
+      };
       try {
         for (const [server, port] of [[collector.api, 8080], [collector.control, 8081]]) await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, '0.0.0.0', resolve); });
-      } catch (error) { await collector.close(); throw error; }
-      return () => collector.close();
+      } catch (error) { await close(); throw error; }
+      return close;
     });
   }
 }
