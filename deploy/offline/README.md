@@ -69,9 +69,9 @@ The plugin repository's [`plugins.json`](https://github.com/recrack/homelab-dsh-
 
 `dsh-family-account` is the family deployment's required base bundle, not an optional `--plugin` selection. Its source and client build live in `homelab-dsh-plugins`; advance the pinned repository commit in the image build after publishing a plugin change.
 
-The host launcher mounts its current `cordis.patch.yml`, `prepare-presets.mjs`, and `hermes.patch.yml` into the container read-only. Changes to these mounted files take effect on the next member restart. `web-provider.mjs`, optional plugin packages, and compiled DSH code are copied into the image and require an image rebuild.
+The host launcher mounts its current `cordis.patch.yml`, `prepare-presets.mjs`, and `hermes.patch.yml` into the container read-only. Changes to these mounted files take effect on the next member restart. The launcher appends the deployment persona to the generated Standard, PTC, and Cordis Web presets. `web-provider.mjs`, optional plugin packages, and compiled DSH code are copied into the image and require an image rebuild.
 
-For an existing compatible DSH image, [Dockerfile.plugins](Dockerfile.plugins) stages a new pinned plugin snapshot and profile installer without rebuilding DSH. Pass the local base image tag and the exact plugin repository commit with `DSH_BASE_IMAGE` and `HOMELAB_DSH_PLUGINS_COMMIT`; the resulting image retains the base image's firewall and runtime entrypoint. The current plugin snapshot is `67e755449366552e8f873d8f720fa8bff7c117ab`.
+For an existing compatible DSH image, [Dockerfile.plugins](Dockerfile.plugins) stages a new pinned plugin snapshot and profile installer without rebuilding DSH. Pass the local base image tag and the exact plugin repository commit with `DSH_BASE_IMAGE` and `HOMELAB_DSH_PLUGINS_COMMIT`; the resulting image retains the base image's firewall and runtime entrypoint. The current plugin snapshot is `a438454eb800a64ea217238095970b44578d074b`.
 
 The `dsh-context` snapshot keeps its context panels and blocks its automatic catalog, balance, and recommendation requests. Open Artifacts provides slides, design, design system, data, motion, and whiteboard skills with the shared Artifacts page. DSH Crew requires the running DSH hub and uses the selected local model for both worker tiers; it cannot fall back to a standalone DeepSeek runtime. The multimodal vision and image-generation providers are disabled.
 
@@ -107,7 +107,7 @@ The collector can also fetch a public HTTP(S) URL after explicit approval. DeepS
 
 ## Research with DSH
 
-Open the Web UI and ask for current, source-backed information. By default, DSH sends each `web_search` query through the collector, which displays the exact query for approval before forwarding it to the local search engines. `--auto-approve-search` skips this step for search queries; each public `web_fetch` request still waits for approval. Ask DSH to prefer primary sources, compare independent sources, state publication dates and uncertainty, and cite source URLs. For example:
+Open the Web UI and ask for current, source-backed information. By default, DSH sends each `web_search` query through the collector, which displays the exact query for approval before forwarding it to the local search engines. `--auto-approve-search` skips this step for search queries; each public `web_fetch` request still waits for approval. If the product page cannot be read, DSH searches for another official source for the same model, such as the manufacturer announcement or documentation repository. Ask DSH to prefer primary sources, compare independent sources, state publication dates and uncertainty, and cite source URLs. For example:
 
 > Research [question]. Find primary sources, fetch relevant pages after approval, compare claims across independent sources, and cite every factual claim. Separate confirmed facts from inference and include publication dates.
 
@@ -141,3 +141,9 @@ The launcher keeps the workspace at its host absolute path for imported session 
 python3 -m unittest discover -s deploy/offline -p 'test_*.py'
 node --import tsx/esm --test deploy/offline/collector.test.mjs deploy/offline/local-search.test.mjs deploy/offline/web-provider.test.mjs deploy/offline/browser-policy.test.mjs deploy/offline/prepare-presets.test.mjs deploy/offline/preset-guard.test.mjs
 ```
+
+On Pigma ARM64, build `Dockerfile.chrome-for-testing` from the official Chrome for Testing Stable archive 158.0.8127.36 when the Debian Chromium package is older.
+Pass the extracted `chrome-linux-arm64` directory as `--build-context chrome_release=/path/to/chrome-linux-arm64`.
+The Chrome launcher uses the Linux desktop Chrome User-Agent for managed sessions.
+Update its major version when updating the pinned Chrome release.
+The DSH browser discovery prefers `/usr/bin/google-chrome` in that image.

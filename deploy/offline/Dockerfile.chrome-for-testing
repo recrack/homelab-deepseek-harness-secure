@@ -1,0 +1,17 @@
+# Use the linux-arm64 Chrome archive from the official Chrome for Testing Stable index.
+ARG DSH_BASE_IMAGE
+FROM ${DSH_BASE_IMAGE}
+
+COPY --from=chrome_release / /opt/google/chrome/
+RUN <<'SH'
+set -eu
+/opt/google/chrome/chrome --version | grep -F '158.0.8127.36'
+rm -f /usr/bin/google-chrome
+cat > /usr/bin/google-chrome <<'WRAPPER'
+#!/bin/sh
+exec /opt/google/chrome/chrome \
+  --user-agent='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36' \
+  "$@"
+WRAPPER
+chmod 0755 /usr/bin/google-chrome
+SH

@@ -24,12 +24,23 @@ export async function presetPatches(activePluginIds = []) {
     throw new Error('Invalid active offline plugin ids');
   }
   const browserEnabled = activePluginIds.includes('dsh-browser');
+  const deployment = parseEntryYaml(await readFile(new URL('./cordis.patch.yml', import.meta.url), 'utf8'));
+  const deploymentSuffix = deployment.find(row => row.id === 'system-prompt')?.config?.personaSuffix;
+  if (typeof deploymentSuffix !== 'string' || !deploymentSuffix.trim()) {
+    throw new Error('Missing offline deployment persona suffix');
+  }
   const patches = [];
   for (const id of ['standard', 'ptc', 'cordis']) {
     const source = new URL(`../../packages/bundle/web-app/presets/${id}.patch.yml`, import.meta.url);
     const rows = parseEntryYaml(await readFile(source, 'utf8'));
     const preset = rows.flatMap(row => row.insert ?? []).find(row => row.id === `preset-${id}`);
     if (!preset || !Array.isArray(preset.config?.plugins)) throw new Error(`Missing shipped preset ${id}`);
+    const persona = preset.config.plugins.find(row => row.id === 'persona');
+    if (!persona) throw new Error(`Missing persona in shipped preset ${id}`);
+    persona.config = {
+      ...persona.config,
+      suffix: [persona.config?.suffix, deploymentSuffix].filter(Boolean).join('\n\n'),
+    };
     const web = preset.config.plugins.filter(row => row.id === 'tool-web');
     if (web.length !== 1) throw new Error(`Expected one Web tool in preset ${id}`);
     web[0].config = { ...web[0].config, searchTimeoutMs: 370000, fetchTimeoutMs: 370000 };
