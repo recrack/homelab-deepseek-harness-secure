@@ -6,6 +6,11 @@ It is built on an **everything-is-a-plugin** architecture and powered by [Cordis
 
 Documentation: [https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
 
+## Homelab deployment
+
+This fork includes an offline Docker profile for a local model, optional plugins, and approved public web research. The [offline deployment guide](deploy/offline/README.md) covers image builds, browser engines, and search configuration. See the [Korean deployment guide](deploy/offline/README.ko.md) and the [Homelab DSH plugin catalog](https://github.com/recrack/homelab-dsh-plugins).
+
+
 ## Developer preview
 
 DeepSeek Harness is in _developer preview_ and iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**
