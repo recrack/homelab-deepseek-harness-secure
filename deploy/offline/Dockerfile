@@ -12,7 +12,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && npm install --global pnpm@11.28.5
 
-ARG HOMELAB_DSH_PLUGINS_COMMIT=67e755449366552e8f873d8f720fa8bff7c117ab
+ARG HOMELAB_DSH_PLUGINS_COMMIT=a438454eb800a64ea217238095970b44578d074b
 RUN mkdir -p /opt/homelab-dsh-plugins \
     && git -C /opt/homelab-dsh-plugins init \
     && git -C /opt/homelab-dsh-plugins remote add origin https://github.com/recrack/homelab-dsh-plugins.git \

@@ -7,6 +7,8 @@ RUN test -n "$HOMELAB_DSH_PLUGINS_COMMIT" \
     && git -C /opt/homelab-dsh-plugins checkout --force --detach FETCH_HEAD \
     && node /opt/homelab-dsh-plugins/scripts/install-open-artifacts.mjs \
     && node /opt/homelab-dsh-plugins/packages/dsh-family-account/scripts/build-client.mjs \
+    && cd /opt/homelab-dsh-plugins/packages/dsh-browser \
+    && ./node_modules/.bin/tsc -p tsconfig.json \
     && chmod -R a+rX /opt/homelab-dsh-plugins
 
 COPY deploy/offline/profile_plugins.py deploy/offline/test_profile_plugins.py /opt/dsh/deploy/offline/
