@@ -51,6 +51,7 @@ class ProfilePluginsTests(unittest.TestCase):
                 "dsh-family-account",
                 "dsh-context",
                 "dsh-super-kanban",
+                "@zseven-w/dsh-game-studio",
                 "dsh-claude-artifacts",
                 "dsh-claude-slides",
                 "dsh-claude-design",

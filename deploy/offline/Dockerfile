@@ -12,7 +12,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && npm install --global pnpm@11.28.5
 
-ARG HOMELAB_DSH_PLUGINS_COMMIT=f88c13f5d1ab35e1b429c5d63233e052a427a3c7
+ARG HOMELAB_DSH_PLUGINS_COMMIT=29b1baf1dd58347843824fd015ccccd528ca0f70
 RUN mkdir -p /opt/homelab-dsh-plugins \
     && git -C /opt/homelab-dsh-plugins init \
     && git -C /opt/homelab-dsh-plugins remote add origin https://github.com/recrack/homelab-dsh-plugins.git \
@@ -31,6 +31,7 @@ RUN pnpm install --frozen-lockfile --ignore-scripts \
     && mkdir -p node_modules/@zseven-w \
     && ln -s /opt/homelab-dsh-plugins/packages/dsh-family-account node_modules/dsh-family-account \
     && ln -s /opt/homelab-dsh-plugins/packages/dsh-browser node_modules/@zseven-w/dsh-browser \
+    && ln -s /opt/homelab-dsh-plugins/packages/dsh-game-studio node_modules/@zseven-w/dsh-game-studio \
     && ln -s /opt/homelab-dsh-plugins/packages/dsh-super-kanban node_modules/dsh-super-kanban \
     && ln -s /opt/homelab-dsh-plugins/packages/dsh-context node_modules/dsh-context \
     && ln -s /opt/homelab-dsh-plugins/packages/open-artifacts/generated/dsh-claude-artifacts node_modules/dsh-claude-artifacts \
@@ -48,7 +49,10 @@ RUN pnpm install --frozen-lockfile --ignore-scripts \
     && chown -R 65534:65534 deploy/offline/collector-home
 
 WORKDIR /workspace
-ENV DSH_WEB_PORT=3080
+ENV DSH_WEB_PORT=3080 DSH_GAME_STUDIO_CHROMIUM=/usr/bin/chromium
 EXPOSE 3080
 ENTRYPOINT ["/opt/dsh/deploy/offline/entrypoint.sh"]
 CMD ["web", "--no-open"]
+
+RUN mkdir -p /opt/homelab-dsh-plugins/packages/dsh-game-studio/node_modules/@deepseek-ai \
+    && ln -sfn /opt/dsh/packages/core/tools /opt/homelab-dsh-plugins/packages/dsh-game-studio/node_modules/@deepseek-ai/dsh-tools

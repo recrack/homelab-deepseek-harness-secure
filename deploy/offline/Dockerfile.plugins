@@ -5,6 +5,7 @@ ARG HOMELAB_DSH_PLUGINS_COMMIT
 RUN test -n "$HOMELAB_DSH_PLUGINS_COMMIT" \
     && git -C /opt/homelab-dsh-plugins fetch --depth=1 origin "$HOMELAB_DSH_PLUGINS_COMMIT" \
     && git -C /opt/homelab-dsh-plugins checkout --force --detach FETCH_HEAD \
+    && /opt/homelab-dsh-plugins/scripts/build-game-studio.sh \
     && node /opt/homelab-dsh-plugins/scripts/install-open-artifacts.mjs \
     && node /opt/homelab-dsh-plugins/packages/dsh-family-account/scripts/build-client.mjs \
     && cd /opt/homelab-dsh-plugins/packages/dsh-browser \
@@ -13,7 +14,10 @@ RUN test -n "$HOMELAB_DSH_PLUGINS_COMMIT" \
 
 COPY deploy/offline/profile_plugins.py deploy/offline/test_profile_plugins.py /opt/dsh/deploy/offline/
 
-RUN ln -sfn /opt/homelab-dsh-plugins/packages/dsh-family-account /opt/dsh/node_modules/dsh-family-account \
+ENV DSH_GAME_STUDIO_CHROMIUM=/usr/bin/chromium
+RUN mkdir -p /opt/dsh/node_modules/@zseven-w \
+    && ln -sfn /opt/homelab-dsh-plugins/packages/dsh-game-studio /opt/dsh/node_modules/@zseven-w/dsh-game-studio \
+    && ln -sfn /opt/homelab-dsh-plugins/packages/dsh-family-account /opt/dsh/node_modules/dsh-family-account \
     && ln -sfn /opt/homelab-dsh-plugins/packages/dsh-super-kanban /opt/dsh/node_modules/dsh-super-kanban \
     && for package in \
       dsh-claude-artifacts \
@@ -25,3 +29,6 @@ RUN ln -sfn /opt/homelab-dsh-plugins/packages/dsh-family-account /opt/dsh/node_m
       dsh-claude-whiteboard; do \
         ln -sfn "/opt/homelab-dsh-plugins/packages/open-artifacts/generated/$package" "/opt/dsh/node_modules/$package"; \
     done
+
+RUN mkdir -p /opt/homelab-dsh-plugins/packages/dsh-game-studio/node_modules/@deepseek-ai \
+    && ln -sfn /opt/dsh/packages/core/tools /opt/homelab-dsh-plugins/packages/dsh-game-studio/node_modules/@deepseek-ai/dsh-tools
