@@ -17,6 +17,7 @@ const pluginIds = new Set([
   'dsh-claude-whiteboard',
   'dsh-crew',
   'dsh-super-kanban',
+  'dsh-game-studio',
 ]);
 
 /** Read current shipped presets, retaining deferred Loader expressions and every other row. */

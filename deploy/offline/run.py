@@ -32,6 +32,7 @@ PLUGIN_IDS = frozenset((
     "dsh-claude-whiteboard",
     "dsh-crew",
     "dsh-super-kanban",
+    "dsh-game-studio",
 ))
 
 

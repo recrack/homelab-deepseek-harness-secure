@@ -154,3 +154,5 @@ Update its major version when updating the pinned Chrome release.
 The DSH browser discovery prefers `/usr/bin/google-chrome` in that image.
 
 Add `--plugin dsh-super-kanban` to enable the Super Kanban board in the Web profile. Automatic session scanning defaults to off.
+
+Add `--plugin dsh-game-studio` for local game creation, preview, playtest and HTML export in the Web profile. The bundle disables external image generation, online game sources, sharing and public publishing.
